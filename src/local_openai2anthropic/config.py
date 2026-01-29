@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     )
     
     # OpenAI API Configuration
-    openai_api_key: str
+    openai_api_key: Optional[str] = None
     openai_base_url: str = "https://api.openai.com/v1"
     openai_org_id: Optional[str] = None
     openai_project_id: Optional[str] = None
