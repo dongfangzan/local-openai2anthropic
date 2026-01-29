@@ -33,19 +33,22 @@ from openai.types.chat import (
 from openai.types.chat.completion_create_params import CompletionCreateParams
 
 from local_openai2anthropic.protocol import UsageWithCache
+from local_openai2anthropic.server_tools import ServerToolRegistry
 
 logger = logging.getLogger(__name__)
 
 
 def convert_anthropic_to_openai(
     anthropic_params: MessageCreateParams,
+    enabled_server_tools: list[type] | None = None,
 ) -> CompletionCreateParams:
     """
     Convert Anthropic MessageCreateParams to OpenAI CompletionCreateParams.
-    
+
     Args:
         anthropic_params: Anthropic message creation parameters
-        
+        enabled_server_tools: List of enabled server tool classes
+
     Returns:
         OpenAI completion create parameters
     """
@@ -63,10 +66,21 @@ def convert_anthropic_to_openai(
     top_p = anthropic_params.get("top_p")
     thinking = anthropic_params.get("thinking")
     # metadata is accepted but not forwarded to OpenAI
-    
+
+    # Extract server tool configurations using registry
+    server_tools_config: dict[str, dict[str, Any]] = {}
+    if enabled_server_tools and tools:
+        for tool_class in enabled_server_tools:
+            for tool in tools:
+                tool_def = tool if isinstance(tool, dict) else tool.model_dump()
+                config = tool_class.extract_config(tool_def)
+                if config is not None:
+                    server_tools_config[tool_class.tool_type] = config
+                    break
+
     # Convert messages
     openai_messages: list[dict[str, Any]] = []
-    
+
     # Add system message if provided
     if system:
         if isinstance(system, str):
@@ -79,7 +93,7 @@ def convert_anthropic_to_openai(
                     system_text += block.get("text", "")
             if system_text:
                 openai_messages.append({"role": "system", "content": system_text})
-    
+
     # Convert conversation messages
     # Handle ValidatorIterator from Pydantic by iterating directly
     msg_count = 0
@@ -89,7 +103,7 @@ def convert_anthropic_to_openai(
             openai_messages.extend(converted_messages)
             msg_count += 1
     logger.debug(f"Converted {msg_count} messages, total OpenAI messages: {len(openai_messages)}")
-    
+
     # Build OpenAI params
     params: dict[str, Any] = {
         "model": model,
@@ -97,11 +111,11 @@ def convert_anthropic_to_openai(
         "max_tokens": max_tokens,
         "stream": stream,
     }
-    
+
     # Always include usage in stream for accurate token counting
     if stream:
         params["stream_options"] = {"include_usage": True}
-    
+
     if stop_sequences:
         params["stop"] = stop_sequences
     if temperature is not None:
@@ -110,12 +124,20 @@ def convert_anthropic_to_openai(
         params["top_p"] = top_p
     if top_k is not None:
         params["top_k"] = top_k
-    
+
     # Convert tools
     if tools:
         openai_tools: list[ChatCompletionToolParam] = []
+        server_tool_types = set(server_tools_config.keys())
+
         for tool in tools:
             tool_def = tool if isinstance(tool, dict) else tool.model_dump()
+            tool_type = tool_def.get("type")
+
+            # Skip server tools - they are handled separately
+            if tool_type in server_tool_types:
+                continue
+
             openai_tool: ChatCompletionToolParam = {
                 "type": "function",
                 "function": {
@@ -125,7 +147,15 @@ def convert_anthropic_to_openai(
                 },
             }
             openai_tools.append(openai_tool)
-        params["tools"] = openai_tools
+
+        # Add server tools as OpenAI function tools
+        for tool_class in (enabled_server_tools or []):
+            if tool_class.tool_type in server_tools_config:
+                config = server_tools_config[tool_class.tool_type]
+                openai_tools.append(tool_class.to_openai_tool(config))
+
+        if openai_tools:
+            params["tools"] = openai_tools
         
         # Convert tool_choice
         if tool_choice:
@@ -150,7 +180,7 @@ def convert_anthropic_to_openai(
         if thinking_type == "enabled":
             # Enable thinking mode for vLLM/SGLang
             params["chat_template_kwargs"] = {"thinking": True}
-            
+
             # Log if budget_tokens was provided but will be ignored
             budget_tokens = thinking.get("budget_tokens")
             if budget_tokens is not None:
@@ -162,7 +192,11 @@ def convert_anthropic_to_openai(
         elif thinking_type == "disabled":
             # Explicitly disable thinking mode
             params["chat_template_kwargs"] = {"thinking": False}
-    
+
+    # Store server tool configs for later use by router
+    if server_tools_config:
+        params["_server_tools_config"] = server_tools_config
+
     return params  # type: ignore
 
 

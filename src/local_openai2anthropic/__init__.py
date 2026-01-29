@@ -13,13 +13,23 @@ from local_openai2anthropic.protocol import (
     MessageCreateParams,
     MessageParam,
     PingEvent,
+    ServerToolUseBlock,
     TextBlock,
     ToolUseBlock,
     UsageWithCache,
+    WebSearchResult,
+    WebSearchToolDefinition,
+    WebSearchToolResult,
+)
+from local_openai2anthropic.server_tools import (
+    ServerTool,
+    ServerToolRegistry,
+    ToolResult,
 )
 
 __all__ = [
     "__version__",
+    # Protocol types
     "AnthropicError",
     "AnthropicErrorResponse",
     "ContentBlock",
@@ -27,7 +37,15 @@ __all__ = [
     "MessageCreateParams",
     "MessageParam",
     "PingEvent",
+    "ServerToolUseBlock",
     "TextBlock",
     "ToolUseBlock",
     "UsageWithCache",
+    "WebSearchResult",
+    "WebSearchToolDefinition",
+    "WebSearchToolResult",
+    # Server tools
+    "ServerTool",
+    "ServerToolRegistry",
+    "ToolResult",
 ]

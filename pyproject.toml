@@ -6,7 +6,7 @@ readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
 authors = [
-    { name = "Your Name", email = "your.email@example.com" }
+    { name = "dongfangzan", email = "zsybook0124@163.com" }
 ]
 keywords = ["anthropic", "openai", "api", "proxy", "messages", "claude"]
 classifiers = [

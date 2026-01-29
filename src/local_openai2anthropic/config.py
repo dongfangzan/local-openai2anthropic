@@ -41,7 +41,13 @@ class Settings(BaseSettings):
     
     # Logging
     log_level: str = "INFO"
-    
+
+    # Tavily Web Search Configuration
+    tavily_api_key: Optional[str] = None
+    tavily_timeout: float = 30.0
+    tavily_max_results: int = 5
+    websearch_max_uses: int = 5  # Default max_uses per request
+
     @property
     def openai_auth_headers(self) -> dict[str, str]:
         """Get OpenAI authentication headers."""
