@@ -189,9 +189,12 @@ def convert_anthropic_to_openai(
                     "vLLM/SGLang. Using default thinking configuration.",
                     budget_tokens
                 )
-        elif thinking_type == "disabled":
-            # Explicitly disable thinking mode
+        else:
+            # Default to disabled thinking mode if not explicitly enabled
             params["chat_template_kwargs"] = {"thinking": False}
+    else:
+        # Default to disabled thinking mode when thinking is not provided
+        params["chat_template_kwargs"] = {"thinking": False}
 
     # Store server tool configs for later use by router
     if server_tools_config:
