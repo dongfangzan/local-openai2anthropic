@@ -156,6 +156,7 @@ def main() -> None:
         host=settings.host,
         port=settings.port,
         log_level=settings.log_level.lower(),
+        timeout_keep_alive=300,  # Keep connections alive for 5 minutes
     )
 
 
