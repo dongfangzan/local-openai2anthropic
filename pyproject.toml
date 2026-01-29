@@ -1,11 +1,14 @@
 [project]
 name = "local-openai2anthropic"
 version = "0.1.0"
-description = "A proxy server that converts Anthropic Messages API to OpenAI API"
+description = "A lightweight proxy server that converts Anthropic Messages API to OpenAI API"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
 authors = [
+    { name = "dongfangzan", email = "zsybook0124@163.com" }
+]
+maintainers = [
     { name = "dongfangzan", email = "zsybook0124@163.com" }
 ]
 keywords = ["anthropic", "openai", "api", "proxy", "messages", "claude"]
@@ -42,9 +45,9 @@ local-openai2anthropic = "local_openai2anthropic.main:main"
 oa2a = "local_openai2anthropic.main:main"
 
 [project.urls]
-Homepage = "https://github.com/yourusername/local-openai2anthropic"
-Repository = "https://github.com/yourusername/local-openai2anthropic"
-Issues = "https://github.com/yourusername/local-openai2anthropic/issues"
+Homepage = "https://github.com/dongfangzan/local-openai2anthropic"
+Repository = "https://github.com/dongfangzan/local-openai2anthropic"
+Issues = "https://github.com/dongfangzan/local-openai2anthropic/issues"
 
 [build-system]
 requires = ["hatchling"]
