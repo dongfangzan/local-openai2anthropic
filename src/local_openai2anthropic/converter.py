@@ -311,7 +311,8 @@ def _convert_anthropic_message_to_openai(
     
     # Build primary message
     messages: list[dict[str, Any]] = []
-    primary_msg: dict[str, Any] = {"role": role}
+    # SGLang requires content field to be present, default to empty string
+    primary_msg: dict[str, Any] = {"role": role, "content": ""}
     
     if openai_content:
         if len(openai_content) == 1 and openai_content[0]["type"] == "text":

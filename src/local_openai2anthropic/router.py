@@ -356,6 +356,9 @@ async def _handle_with_server_tools(
     while True:
         async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
             try:
+                # Log full request for debugging
+                logger.info(f"Request body: {json.dumps(params, indent=2, default=str)[:3000]}")
+                
                 response = await client.post(url, headers=headers, json=params)
 
                 if response.status_code != 200:
