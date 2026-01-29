@@ -5,23 +5,13 @@ Core conversion logic between Anthropic and OpenAI formats.
 
 import json
 import logging
-import time
-from typing import Any, AsyncGenerator, Optional
-
-logger = logging.getLogger(__name__)
+from typing import Any, Optional
 
 from anthropic.types import (
     ContentBlock,
-    ContentBlockDeltaEvent,
-    ContentBlockStartEvent,
-    ContentBlockStopEvent,
     Message,
-    MessageDeltaEvent,
     MessageParam,
-    MessageStartEvent,
-    MessageStopEvent,
     TextBlock,
-    TextDelta,
     ToolUseBlock,
 )
 from anthropic.types.message_create_params import MessageCreateParams
@@ -175,11 +165,15 @@ def convert_anthropic_to_openai(
     
     # Handle thinking parameter
     # vLLM/SGLang use chat_template_kwargs.thinking to toggle thinking mode
+    # Some models use "thinking", others use "enable_thinking", so we include both
     if thinking and isinstance(thinking, dict):
         thinking_type = thinking.get("type")
         if thinking_type == "enabled":
-            # Enable thinking mode for vLLM/SGLang
-            params["chat_template_kwargs"] = {"thinking": True}
+            # Enable thinking mode - include both variants for compatibility
+            params["chat_template_kwargs"] = {
+                "thinking": True,
+                "enable_thinking": True,
+            }
 
             # Log if budget_tokens was provided but will be ignored
             budget_tokens = thinking.get("budget_tokens")
@@ -191,10 +185,16 @@ def convert_anthropic_to_openai(
                 )
         else:
             # Default to disabled thinking mode if not explicitly enabled
-            params["chat_template_kwargs"] = {"thinking": False}
+            params["chat_template_kwargs"] = {
+                "thinking": False,
+                "enable_thinking": False,
+            }
     else:
         # Default to disabled thinking mode when thinking is not provided
-        params["chat_template_kwargs"] = {"thinking": False}
+        params["chat_template_kwargs"] = {
+            "thinking": False,
+            "enable_thinking": False,
+        }
 
     # Store server tool configs for later use by router
     if server_tools_config:
@@ -361,11 +361,24 @@ def convert_openai_to_anthropic(
     Returns:
         Anthropic Message response
     """
+    from anthropic.types.beta import BetaThinkingBlock
+    
     choice = completion.choices[0]
     message = choice.message
     
     # Convert content blocks
     content: list[ContentBlock] = []
+    
+    # Add reasoning content (thinking) first if present
+    reasoning_content = getattr(message, 'reasoning_content', None)
+    if reasoning_content:
+        content.append(
+            BetaThinkingBlock(
+                type="thinking",
+                thinking=reasoning_content,
+                signature="",  # Signature not available from OpenAI format
+            )
+        )
     
     # Add text content if present
     if message.content:
@@ -426,208 +439,3 @@ def convert_openai_to_anthropic(
     }
     
     return Message.model_validate(message_dict)
-
-
-async def convert_openai_stream_to_anthropic(
-    stream: AsyncGenerator[ChatCompletionChunk, None],
-    model: str,
-    enable_ping: bool = False,
-    ping_interval: float = 15.0,
-) -> AsyncGenerator[dict, None]:
-    """
-    Convert OpenAI streaming response to Anthropic streaming events.
-    
-    Args:
-        stream: OpenAI chat completion stream
-        model: Model name
-        enable_ping: Whether to send periodic ping events
-        ping_interval: Interval between ping events in seconds
-        
-    Yields:
-        Anthropic MessageStreamEvent objects as dicts
-    """
-    message_id = f"msg_{int(time.time() * 1000)}"
-    first_chunk = True
-    content_block_started = False
-    content_block_index = 0
-    current_tool_call: Optional[dict[str, Any]] = None
-    finish_reason: Optional[str] = None
-    
-    # Track usage for final message_delta
-    input_tokens = 0
-    output_tokens = 0
-    
-    last_ping_time = time.time()
-    
-    async for chunk in stream:
-        # Send ping events if enabled and interval has passed
-        if enable_ping:
-            current_time = time.time()
-            if current_time - last_ping_time >= ping_interval:
-                yield {"type": "ping"}
-                last_ping_time = current_time
-        
-        # First chunk: message_start event
-        if first_chunk:
-            if chunk.usage:
-                input_tokens = chunk.usage.prompt_tokens
-                output_tokens = chunk.usage.completion_tokens
-            
-            yield {
-                "type": "message_start",
-                "message": {
-                    "id": message_id,
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [],
-                    "model": model,
-                    "stop_reason": None,
-                    "stop_sequence": None,
-                    "usage": {
-                        "input_tokens": input_tokens,
-                        "output_tokens": 0,
-                        "cache_creation_input_tokens": None,
-                        "cache_read_input_tokens": None,
-                    },
-                },
-            }
-            first_chunk = False
-            continue
-        
-        # Handle usage-only chunks (last chunk)
-        if not chunk.choices:
-            if chunk.usage:
-                input_tokens = chunk.usage.prompt_tokens
-                output_tokens = chunk.usage.completion_tokens
-                
-                # Close any open content block
-                if content_block_started:
-                    yield {
-                        "type": "content_block_stop",
-                        "index": content_block_index,
-                    }
-                
-                # Message delta with final usage
-                stop_reason_map = {
-                    "stop": "end_turn",
-                    "length": "max_tokens",
-                    "tool_calls": "tool_use",
-                }
-                yield {
-                    "type": "message_delta",
-                    "delta": {
-                        "stop_reason": stop_reason_map.get(finish_reason or "stop", "end_turn"),
-                    },
-                    "usage": {
-                        "input_tokens": input_tokens,
-                        "output_tokens": output_tokens,
-                        "cache_creation_input_tokens": getattr(chunk.usage, "cache_creation_input_tokens", None),
-                        "cache_read_input_tokens": getattr(chunk.usage, "cache_read_input_tokens", None),
-                    },
-                }
-            continue
-        
-        choice = chunk.choices[0]
-        delta = choice.delta
-
-        # Track finish reason
-        if choice.finish_reason:
-            finish_reason = choice.finish_reason
-            continue
-
-        # Handle reasoning content (thinking)
-        if delta.reasoning_content:
-            reasoning = delta.reasoning_content
-            # Start thinking content block if not already started
-            if not content_block_started or content_block_index == 0:
-                # We need a separate index for thinking block
-                if content_block_started:
-                    # Close previous block
-                    yield {
-                        "type": "content_block_stop",
-                        "index": content_block_index,
-                    }
-                    content_block_index += 1
-                yield {
-                    "type": "content_block_start",
-                    "index": content_block_index,
-                    "content_block": {"type": "thinking", "thinking": ""},
-                }
-                content_block_started = True
-
-            yield {
-                "type": "content_block_delta",
-                "index": content_block_index,
-                "delta": {"type": "thinking_delta", "thinking": reasoning},
-            }
-            continue
-
-        # Handle content
-        if delta.content:
-            if not content_block_started:
-                # Start text content block
-                yield {
-                    "type": "content_block_start",
-                    "index": content_block_index,
-                    "content_block": {"type": "text", "text": ""},
-                }
-                content_block_started = True
-            
-            if delta.content:
-                yield {
-                    "type": "content_block_delta",
-                    "index": content_block_index,
-                    "delta": {"type": "text_delta", "text": delta.content},
-                }
-        
-        # Handle tool calls
-        if delta.tool_calls:
-            tool_call = delta.tool_calls[0]
-            
-            if tool_call.id:
-                # Close previous content block if any
-                if content_block_started:
-                    yield {
-                        "type": "content_block_stop",
-                        "index": content_block_index,
-                    }
-                    content_block_started = False
-                    content_block_index += 1
-                
-                # Start new tool_use block
-                current_tool_call = {
-                    "id": tool_call.id,
-                    "name": tool_call.function.name if tool_call.function else "",
-                    "arguments": "",
-                }
-                yield {
-                    "type": "content_block_start",
-                    "index": content_block_index,
-                    "content_block": {
-                        "type": "tool_use",
-                        "id": tool_call.id,
-                        "name": tool_call.function.name if tool_call.function else "",
-                        "input": {},
-                    },
-                }
-                content_block_started = True
-                
-            elif tool_call.function and tool_call.function.arguments:
-                # Continue tool call arguments
-                args = tool_call.function.arguments
-                current_tool_call["arguments"] += args
-                yield {
-                    "type": "content_block_delta",
-                    "index": content_block_index,
-                    "delta": {"type": "input_json_delta", "partial_json": args},
-                }
-    
-    # Close final content block
-    if content_block_started:
-        yield {
-            "type": "content_block_stop",
-            "index": content_block_index,
-        }
-    
-    # Message stop event
-    yield {"type": "message_stop"}

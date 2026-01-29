@@ -60,3 +60,4 @@ Thumbs.db
 # Local development
 .env.local
 .env.*.local
+.env*

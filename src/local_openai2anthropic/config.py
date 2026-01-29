@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     cors_headers: list[str] = ["*"]
     
     # Logging
-    log_level: str = "INFO"
+    log_level: str = "DEBUG"
 
     # Tavily Web Search Configuration
     tavily_api_key: Optional[str] = None

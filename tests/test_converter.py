@@ -150,7 +150,7 @@ class TestAnthropicToOpenAI:
         
         result = convert_anthropic_to_openai(params)
         
-        assert result["chat_template_kwargs"] == {"thinking": True}
+        assert result["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
 
     def test_thinking_disabled(self):
         """Test thinking disabled conversion."""
@@ -163,7 +163,7 @@ class TestAnthropicToOpenAI:
         
         result = convert_anthropic_to_openai(params)
         
-        assert result["chat_template_kwargs"] == {"thinking": False}
+        assert result["chat_template_kwargs"] == {"thinking": False, "enable_thinking": False}
 
     def test_thinking_with_budget(self):
         """Test thinking with budget_tokens (accepted but ignored)."""
@@ -176,7 +176,7 @@ class TestAnthropicToOpenAI:
         
         result = convert_anthropic_to_openai(params)
         
-        assert result["chat_template_kwargs"] == {"thinking": True}
+        assert result["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
 
 
 class TestOpenAIToAnthropic:

@@ -82,6 +82,7 @@ async def _stream_response(
             first_chunk = True
             content_block_started = False
             content_block_index = 0
+            current_block_type = None  # 'thinking', 'text', or 'tool_use'
             finish_reason = None
             input_tokens = 0
             output_tokens = 0
@@ -97,13 +98,14 @@ async def _stream_response(
 
                 try:
                     chunk = json.loads(data)
+                    logger.debug(f"[OpenAI Stream Chunk] {json.dumps(chunk, ensure_ascii=False)}")
                 except json.JSONDecodeError:
                     continue
 
                 # First chunk: message_start
                 if first_chunk:
                     message_id = chunk.get("id", "")
-                    usage = chunk.get("usage", {})
+                    usage = chunk.get("usage") or {}
                     input_tokens = usage.get("prompt_tokens", 0)
 
                     start_event = {
@@ -124,54 +126,70 @@ async def _stream_response(
                             },
                         },
                     }
+                    logger.debug(f"[Anthropic Stream Event] message_start: {json.dumps(start_event, ensure_ascii=False)}")
                     yield f"event: message_start\ndata: {json.dumps(start_event)}\n\n"
                     first_chunk = False
                     continue
 
                 # Handle usage-only chunks
                 if not chunk.get("choices"):
-                    usage = chunk.get("usage", {})
+                    usage = chunk.get("usage") or {}
                     if usage:
                         if content_block_started:
                             yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': content_block_index})}\n\n"
                             content_block_started = False
 
                         stop_reason_map = {"stop": "end_turn", "length": "max_tokens", "tool_calls": "tool_use"}
-                        yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': stop_reason_map.get(finish_reason or 'stop', 'end_turn')}, 'usage': {'input_tokens': usage.get('prompt_tokens', 0), 'output_tokens': usage.get('completion_tokens', 0), 'cache_creation_input_tokens': None, 'cache_read_input_tokens': None}})}\n\n"
+                        delta_event = {'type': 'message_delta', 'delta': {'stop_reason': stop_reason_map.get(finish_reason or 'stop', 'end_turn')}, 'usage': {'input_tokens': usage.get('prompt_tokens', 0), 'output_tokens': usage.get('completion_tokens', 0), 'cache_creation_input_tokens': None, 'cache_read_input_tokens': None}}
+                        logger.debug(f"[Anthropic Stream Event] message_delta: {json.dumps(delta_event, ensure_ascii=False)}")
+                        yield f"event: message_delta\ndata: {json.dumps(delta_event)}\n\n"
                     continue
 
                 choice = chunk["choices"][0]
                 delta = choice.get("delta", {})
 
-                # Track finish reason
+                # Track finish reason (but don't skip - content may also be present)
                 if choice.get("finish_reason"):
                     finish_reason = choice["finish_reason"]
-                    continue
 
                 # Handle reasoning content (thinking)
                 if delta.get("reasoning_content"):
                     reasoning = delta["reasoning_content"]
                     # Start thinking content block if not already started
-                    if not content_block_started or content_block_index == 0:
-                        # We need a separate index for thinking block
-                        # For simplicity, we treat thinking as a separate block before text
+                    if not content_block_started or current_block_type != 'thinking':
+                        # Close previous block if exists
                         if content_block_started:
-                            # Close previous block
-                            yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': content_block_index})}\n\n"
+                            stop_block = {'type': 'content_block_stop', 'index': content_block_index}
+                            logger.debug(f"[Anthropic Stream Event] content_block_stop ({current_block_type}): {json.dumps(stop_block, ensure_ascii=False)}")
+                            yield f"event: content_block_stop\ndata: {json.dumps(stop_block)}\n\n"
                             content_block_index += 1
-                        yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': content_block_index, 'content_block': {'type': 'thinking', 'thinking': ''}})}\n\n"
+                        start_block = {'type': 'content_block_start', 'index': content_block_index, 'content_block': {'type': 'thinking', 'thinking': ''}}
+                        logger.debug(f"[Anthropic Stream Event] content_block_start (thinking): {json.dumps(start_block, ensure_ascii=False)}")
+                        yield f"event: content_block_start\ndata: {json.dumps(start_block)}\n\n"
                         content_block_started = True
+                        current_block_type = 'thinking'
 
-                    yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': content_block_index, 'delta': {'type': 'thinking_delta', 'thinking': reasoning}})}\n\n"
+                    delta_block = {'type': 'content_block_delta', 'index': content_block_index, 'delta': {'type': 'thinking_delta', 'thinking': reasoning}}
+                    yield f"event: content_block_delta\ndata: {json.dumps(delta_block)}\n\n"
                     continue
 
                 # Handle content
                 if delta.get("content"):
-                    if not content_block_started:
-                        yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': content_block_index, 'content_block': {'type': 'text', 'text': ''}})}\n\n"
+                    if not content_block_started or current_block_type != 'text':
+                        # Close previous block if exists
+                        if content_block_started:
+                            stop_block = {'type': 'content_block_stop', 'index': content_block_index}
+                            logger.debug(f"[Anthropic Stream Event] content_block_stop ({current_block_type}): {json.dumps(stop_block, ensure_ascii=False)}")
+                            yield f"event: content_block_stop\ndata: {json.dumps(stop_block)}\n\n"
+                            content_block_index += 1
+                        start_block = {'type': 'content_block_start', 'index': content_block_index, 'content_block': {'type': 'text', 'text': ''}}
+                        logger.debug(f"[Anthropic Stream Event] content_block_start (text): {json.dumps(start_block, ensure_ascii=False)}")
+                        yield f"event: content_block_start\ndata: {json.dumps(start_block)}\n\n"
                         content_block_started = True
+                        current_block_type = 'text'
 
-                    yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': content_block_index, 'delta': {'type': 'text_delta', 'text': delta['content']}})}\n\n"
+                    delta_block = {'type': 'content_block_delta', 'index': content_block_index, 'delta': {'type': 'text_delta', 'text': delta['content']}}
+                    yield f"event: content_block_delta\ndata: {json.dumps(delta_block)}\n\n"
 
                 # Handle tool calls
                 if delta.get("tool_calls"):
@@ -183,27 +201,34 @@ async def _stream_response(
                             content_block_started = False
                             content_block_index += 1
 
-                        yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': content_block_index, 'content_block': {'type': 'tool_use', 'id': tool_call['id'], 'name': tool_call.get('function', {}).get('name', ''), 'input': {}}})}\n\n"
+                        func = tool_call.get('function') or {}
+                        yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': content_block_index, 'content_block': {'type': 'tool_use', 'id': tool_call['id'], 'name': func.get('name', ''), 'input': {}}})}\n\n"
                         content_block_started = True
+                        current_block_type = 'tool_use'
 
-                    elif tool_call.get("function", {}).get("arguments"):
-                        args = tool_call["function"]["arguments"]
+                    elif (tool_call.get('function') or {}).get("arguments"):
+                        args = (tool_call.get('function') or {}).get("arguments", "")
                         yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': content_block_index, 'delta': {'type': 'input_json_delta', 'partial_json': args}})}\n\n"
 
             # Close final content block
             if content_block_started:
-                yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': content_block_index})}\n\n"
+                stop_block = {'type': 'content_block_stop', 'index': content_block_index}
+                logger.debug(f"[Anthropic Stream Event] content_block_stop (final): {json.dumps(stop_block, ensure_ascii=False)}")
+                yield f"event: content_block_stop\ndata: {json.dumps(stop_block)}\n\n"
 
             # Message stop
-            yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop'})}\n\n"
-            yield "data: [DONE]\n\n"
+            stop_event = {'type': 'message_stop'}
+            logger.debug(f"[Anthropic Stream Event] message_stop: {json.dumps(stop_event, ensure_ascii=False)}")
+            yield f"event: message_stop\ndata: {json.dumps(stop_event)}\n\n"
 
     except Exception as e:
+        import traceback
+        error_msg = f"{str(e)}\n{traceback.format_exc()}"
+        logger.error(f"Stream error: {error_msg}")
         error_event = AnthropicErrorResponse(
             error=AnthropicError(type="internal_error", message=str(e))
         )
         yield f"event: error\ndata: {error_event.model_dump_json()}\n\n"
-        yield "data: [DONE]\n\n"
 
 
 async def _convert_result_to_stream(
@@ -272,6 +297,14 @@ async def _convert_result_to_stream(
 
             yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': i, 'content_block': tool_result_block})}\n\n"
             yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': i})}\n\n"
+
+        elif block_type == "thinking":
+            # Handle thinking blocks (BetaThinkingBlock)
+            yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': i, 'content_block': {'type': 'thinking', 'thinking': ''}})}\n\n"
+            thinking_text = block.get("thinking", "")
+            if thinking_text:
+                yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': i, 'delta': {'type': 'thinking_delta', 'thinking': thinking_text}})}\n\n"
+            yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': i})}\n\n"
     
     # 3. message_delta with final usage
     delta_event = {
@@ -289,7 +322,6 @@ async def _convert_result_to_stream(
     
     # 4. message_stop
     yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop'})}\n\n"
-    yield "data: [DONE]\n\n"
 
 
 class ServerToolHandler:
@@ -579,7 +611,7 @@ async def create_message(
     try:
         body_bytes = await request.body()
         body_json = json.loads(body_bytes.decode("utf-8"))
-        logger.info(f"Received body: {body_json}")
+        logger.debug(f"[Anthropic Request] {json.dumps(body_json, ensure_ascii=False, indent=2)}")
         anthropic_params = body_json
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in request body: {e}")
@@ -636,6 +668,10 @@ async def create_message(
         enabled_server_tools=enabled_server_tools if has_server_tools else None,
     )
     openai_params: dict[str, Any] = dict(openai_params_obj)  # type: ignore
+    
+    # Log converted OpenAI request (remove internal fields)
+    log_params = {k: v for k, v in openai_params.items() if not k.startswith('_')}
+    logger.debug(f"[OpenAI Request] {json.dumps(log_params, ensure_ascii=False, indent=2)}")
 
     stream = openai_params.get("stream", False)
     model = openai_params.get("model", "")
@@ -692,11 +728,16 @@ async def create_message(
                     )
 
                 openai_completion = response.json()
+                logger.debug(f"[OpenAI Response] {json.dumps(openai_completion, ensure_ascii=False, indent=2)}")
+                
                 from openai.types.chat import ChatCompletion
                 completion = ChatCompletion.model_validate(openai_completion)
                 anthropic_message = convert_openai_to_anthropic(completion, model)
+                
+                anthropic_response = anthropic_message.model_dump()
+                logger.debug(f"[Anthropic Response] {json.dumps(anthropic_response, ensure_ascii=False, indent=2)}")
 
-                return JSONResponse(content=anthropic_message.model_dump())
+                return JSONResponse(content=anthropic_response)
 
             except httpx.TimeoutException:
                 error_response = AnthropicErrorResponse(
