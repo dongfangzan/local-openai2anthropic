@@ -148,6 +148,23 @@ async def _stream_response(
                     finish_reason = choice["finish_reason"]
                     continue
 
+                # Handle reasoning content (thinking)
+                if delta.get("reasoning_content"):
+                    reasoning = delta["reasoning_content"]
+                    # Start thinking content block if not already started
+                    if not content_block_started or content_block_index == 0:
+                        # We need a separate index for thinking block
+                        # For simplicity, we treat thinking as a separate block before text
+                        if content_block_started:
+                            # Close previous block
+                            yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': content_block_index})}\n\n"
+                            content_block_index += 1
+                        yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': content_block_index, 'content_block': {'type': 'thinking', 'thinking': ''}})}\n\n"
+                        content_block_started = True
+
+                    yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': content_block_index, 'delta': {'type': 'thinking_delta', 'thinking': reasoning}})}\n\n"
+                    continue
+
                 # Handle content
                 if delta.get("content"):
                     if not content_block_started:
@@ -562,6 +579,7 @@ async def create_message(
     try:
         body_bytes = await request.body()
         body_json = json.loads(body_bytes.decode("utf-8"))
+        logger.info(f"Received body: {body_json}")
         anthropic_params = body_json
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in request body: {e}")

@@ -529,12 +529,39 @@ async def convert_openai_stream_to_anthropic(
         
         choice = chunk.choices[0]
         delta = choice.delta
-        
+
         # Track finish reason
         if choice.finish_reason:
             finish_reason = choice.finish_reason
             continue
-        
+
+        # Handle reasoning content (thinking)
+        if delta.reasoning_content:
+            reasoning = delta.reasoning_content
+            # Start thinking content block if not already started
+            if not content_block_started or content_block_index == 0:
+                # We need a separate index for thinking block
+                if content_block_started:
+                    # Close previous block
+                    yield {
+                        "type": "content_block_stop",
+                        "index": content_block_index,
+                    }
+                    content_block_index += 1
+                yield {
+                    "type": "content_block_start",
+                    "index": content_block_index,
+                    "content_block": {"type": "thinking", "thinking": ""},
+                }
+                content_block_started = True
+
+            yield {
+                "type": "content_block_delta",
+                "index": content_block_index,
+                "delta": {"type": "thinking_delta", "thinking": reasoning},
+            }
+            continue
+
         # Handle content
         if delta.content:
             if not content_block_started:
