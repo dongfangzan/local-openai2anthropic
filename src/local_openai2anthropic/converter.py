@@ -49,11 +49,11 @@ def convert_anthropic_to_openai(
     system = anthropic_params.get("system")
     stop_sequences = anthropic_params.get("stop_sequences")
     stream = anthropic_params.get("stream", False)
-    temperature = anthropic_params.get("temperature")
+    temperature = anthropic_params.get("temperature", 0.6)
     tool_choice = anthropic_params.get("tool_choice")
     tools = anthropic_params.get("tools")
     top_k = anthropic_params.get("top_k")
-    top_p = anthropic_params.get("top_p")
+    top_p = anthropic_params.get("top_p", 0.95)
     thinking = anthropic_params.get("thinking")
     # metadata is accepted but not forwarded to OpenAI
 

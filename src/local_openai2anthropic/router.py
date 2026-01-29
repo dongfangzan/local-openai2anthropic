@@ -406,7 +406,7 @@ async def _handle_with_server_tools(
         async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
             try:
                 # Log full request for debugging
-                logger.info(f"Request body: {json.dumps(params, indent=2, default=str)[:3000]}")
+                logger.debug(f"Request body: {json.dumps(params, indent=2, default=str)[:3000]}")
                 
                 response = await client.post(url, headers=headers, json=params)
 
@@ -421,7 +421,7 @@ async def _handle_with_server_tools(
                     )
 
                 completion_data = response.json()
-                logger.info(f"OpenAI response: {json.dumps(completion_data, indent=2)[:500]}...")
+                logger.debug(f"OpenAI response: {json.dumps(completion_data, indent=2)[:500]}...")
                 from openai.types.chat import ChatCompletion
                 completion = ChatCompletion.model_validate(completion_data)
 
