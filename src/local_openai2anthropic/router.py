@@ -786,6 +786,103 @@ async def list_models(
             )
 
 
+@router.post("/v1/messages/count_tokens")
+async def count_tokens(
+    request: Request,
+    settings: Settings = Depends(get_request_settings),
+) -> JSONResponse:
+    """
+    Count tokens in messages without creating a message.
+    Uses tiktoken for local token counting.
+    """
+    try:
+        body_bytes = await request.body()
+        body_json = json.loads(body_bytes.decode("utf-8"))
+        logger.debug(f"[Count Tokens Request] {json.dumps(body_json, ensure_ascii=False, indent=2)}")
+    except json.JSONDecodeError as e:
+        error_response = AnthropicErrorResponse(
+            error=AnthropicError(type="invalid_request_error", message=f"Invalid JSON: {e}")
+        )
+        return JSONResponse(status_code=422, content=error_response.model_dump())
+    except Exception as e:
+        error_response = AnthropicErrorResponse(
+            error=AnthropicError(type="invalid_request_error", message=str(e))
+        )
+        return JSONResponse(status_code=400, content=error_response.model_dump())
+
+    # Validate required fields
+    if not isinstance(body_json, dict):
+        error_response = AnthropicErrorResponse(
+            error=AnthropicError(type="invalid_request_error", message="Request body must be a JSON object")
+        )
+        return JSONResponse(status_code=422, content=error_response.model_dump())
+
+    messages = body_json.get("messages", [])
+    if not isinstance(messages, list):
+        error_response = AnthropicErrorResponse(
+            error=AnthropicError(type="invalid_request_error", message="messages must be a list")
+        )
+        return JSONResponse(status_code=422, content=error_response.model_dump())
+
+    model = body_json.get("model", "")
+    system = body_json.get("system")
+    tools = body_json.get("tools", [])
+
+    try:
+        # Use tiktoken for token counting
+        import tiktoken
+        
+        # Map model names to tiktoken encoding
+        # Claude models don't have direct tiktoken encodings, so we use cl100k_base as approximation
+        encoding = tiktoken.get_encoding("cl100k_base")
+        
+        total_tokens = 0
+        
+        # Count system prompt tokens if present
+        if system:
+            if isinstance(system, str):
+                total_tokens += len(encoding.encode(system))
+            elif isinstance(system, list):
+                for block in system:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        total_tokens += len(encoding.encode(block.get("text", "")))
+        
+        # Count message tokens
+        for msg in messages:
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                total_tokens += len(encoding.encode(content))
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict):
+                        if block.get("type") == "text":
+                            total_tokens += len(encoding.encode(block.get("text", "")))
+                        elif block.get("type") == "image":
+                            # Images are typically counted as a fixed number of tokens
+                            # This is an approximation
+                            total_tokens += 85  # Standard approximation for images
+        
+        # Count tool definitions tokens
+        if tools:
+            for tool in tools:
+                tool_def = tool if isinstance(tool, dict) else tool.model_dump()
+                # Rough approximation for tool definitions
+                total_tokens += len(encoding.encode(json.dumps(tool_def)))
+        
+        logger.debug(f"[Count Tokens Response] input_tokens: {total_tokens}")
+        
+        return JSONResponse(content={
+            "input_tokens": total_tokens
+        })
+        
+    except Exception as e:
+        logger.error(f"Token counting error: {e}")
+        error_response = AnthropicErrorResponse(
+            error=AnthropicError(type="internal_error", message=f"Failed to count tokens: {str(e)}")
+        )
+        return JSONResponse(status_code=500, content=error_response.model_dump())
+
+
 @router.get("/health")
 async def health_check() -> dict[str, str]:
     """Health check endpoint."""
