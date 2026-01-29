@@ -3,6 +3,7 @@
 Main entry point for the local-openai2anthropic proxy server.
 """
 
+import argparse
 import logging
 import sys
 
@@ -130,20 +131,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 def main() -> None:
     """Main entry point."""
+    # Parse arguments first (before loading settings)
+    parser = argparse.ArgumentParser(
+        prog="oa2a",
+        description="A proxy server that converts Anthropic Messages API to OpenAI API",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="%(prog)s 0.1.0",
+    )
+    args = parser.parse_args()
+
     # Load settings
     settings = get_settings()
-    
+
     # Validate required settings
     if not settings.openai_api_key:
         print(
-            "Error: OPENAI_API_KEY environment variable is required.\n"
+            "Error: OA2A_OPENAI_API_KEY environment variable is required.\n"
             "Set it via:\n"
             "  - Environment variable: export OA2A_OPENAI_API_KEY='your-key'\n"
-            "  - Or create a .env file with OPENAI_API_KEY=your-key",
+            "  - Or create a .env file with OA2A_OPENAI_API_KEY=your-key",
             file=sys.stderr,
         )
         sys.exit(1)
-    
+
     # Create app
     app = create_app(settings)
     
