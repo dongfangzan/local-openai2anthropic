@@ -20,6 +20,7 @@ This proxy translates Claude SDK calls to OpenAI API format in real-time, enabli
 - **Offline development** without cloud API costs
 - **Privacy-first AI** - data never leaves your machine
 - **Seamless model switching** between cloud and local
+- **Web Search tool** - built-in Tavily web search for local models
 
 ---
 
