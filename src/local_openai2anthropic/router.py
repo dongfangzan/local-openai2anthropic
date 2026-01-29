@@ -513,9 +513,10 @@ def _add_tool_results_to_messages(
     messages = list(messages)
 
     # Add assistant message with tool calls
+    # SGLang requires content to be a string, not None
     assistant_msg: dict[str, Any] = {
         "role": "assistant",
-        "content": None,
+        "content": "",  # Empty string instead of None for SGLang compatibility
         "tool_calls": tool_calls,
     }
     messages.append(assistant_msg)
