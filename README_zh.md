@@ -45,7 +45,11 @@
 pip install local-openai2anthropic
 ```
 
-### 2. 启动本地模型服务
+### 2. 配置你的 LLM 后端（可选）
+
+**选项 A：启动本地模型服务**
+
+如果你还没有运行 LLM 服务，可以在本地启动一个：
 
 使用 vLLM 示例：
 ```bash
@@ -58,6 +62,16 @@ vllm serve meta-llama/Llama-2-7b-chat-hf
 sglang launch --model-path meta-llama/Llama-2-7b-chat-hf --port 8000
 # SGLang 在 http://localhost:8000/v1 启动
 ```
+
+**选项 B：使用已有的 OpenAI 兼容 API**
+
+如果你已经部署了 OpenAI 兼容的 API（本地或远程），可以直接使用。记下 base URL 用于下一步。
+
+示例：
+- 本地 vLLM/SGLang：`http://localhost:8000/v1`
+- 远程 API：`https://api.example.com/v1`
+
+> **注意：** 如果你使用 [Ollama](https://ollama.com)，它原生支持 Anthropic API 格式，无需使用本代理工具。直接将 Claude SDK 指向 `http://localhost:11434/v1` 即可。
 
 ### 3. 启动代理
 
@@ -121,20 +135,29 @@ print(message.content[0].text)
 
 ### 配置步骤
 
-1. **创建或编辑 Claude Code 配置文件** `~/.claude/CLAUDE.md`：
+1. **编辑 Claude Code 配置文件** `~/.claude/settings.json`：
 
-```markdown
-# Claude Code 配置
-
-## API 设置
-
-- Claude API Base URL: http://localhost:8080
-- Claude API Key: dummy-key
-
-## 模型设置
-
-Use model: meta-llama/Llama-2-7b-chat-hf  # 你的本地模型名称
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:8080",
+    "ANTHROPIC_API_KEY": "dummy-key",
+    "ANTHROPIC_MODEL": "meta-llama/Llama-2-7b-chat-hf",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "meta-llama/Llama-2-7b-chat-hf",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "meta-llama/Llama-2-7b-chat-hf",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "meta-llama/Llama-2-7b-chat-hf",
+    "ANTHROPIC_REASONING_MODEL": "meta-llama/Llama-2-7b-chat-hf"
+  }
+}
 ```
+
+| 变量 | 说明 |
+|------|------|
+| `ANTHROPIC_MODEL` | 通用模型配置 |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Sonnet 模式默认模型（Claude Code 默认使用） |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | Opus 模式默认模型 |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Haiku 模式默认模型 |
+| `ANTHROPIC_REASONING_MODEL` | 推理任务默认模型 |
 
 2. **或者在运行 Claude Code 前设置环境变量**：
 
@@ -145,37 +168,35 @@ export ANTHROPIC_API_KEY=dummy-key
 claude
 ```
 
-3. **也可以使用 `--api-key` 和 `--base-url` 参数**：
-
-```bash
-claude --api-key dummy-key --base-url http://localhost:8080
-```
-
 ### 完整工作流示例
+
+确保 `~/.claude/settings.json` 已按上述步骤配置好。
 
 终端 1 - 启动本地模型：
 ```bash
 vllm serve meta-llama/Llama-2-7b-chat-hf
 ```
 
-终端 2 - 启动代理：
+终端 2 - 启动代理（后台运行）：
 ```bash
 export OA2A_OPENAI_BASE_URL=http://localhost:8000/v1
 export OA2A_OPENAI_API_KEY=dummy
 export OA2A_TAVILY_API_KEY="tvly-your-tavily-api-key"  # 可选：启用网页搜索
 
-oa2a
+oa2a start
 ```
 
-终端 3 - 启动 Claude Code 并使用本地模型：
+终端 3 - 启动 Claude Code：
 ```bash
-export ANTHROPIC_BASE_URL=http://localhost:8080
-export ANTHROPIC_API_KEY=dummy-key
-
 claude
 ```
 
 现在 Claude Code 将使用你的本地大模型，而不是云端 API。
+
+如需停止代理：
+```bash
+oa2a stop
+```
 
 ---
 

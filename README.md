@@ -45,7 +45,11 @@ Other OpenAI-compatible backends may work but are not fully tested.
 pip install local-openai2anthropic
 ```
 
-### 2. Start Your Local LLM Server
+### 2. Configure Your LLM Backend (Optional)
+
+**Option A: Start a local LLM server**
+
+If you don't have an LLM server running, you can start one locally:
 
 Example with vLLM:
 ```bash
@@ -58,6 +62,16 @@ Or with SGLang:
 sglang launch --model-path meta-llama/Llama-2-7b-chat-hf --port 8000
 # SGLang starts at http://localhost:8000/v1
 ```
+
+**Option B: Use an existing OpenAI-compatible API**
+
+If you already have a deployed OpenAI-compatible API (local or remote), you can use it directly. Just note the base URL for the next step.
+
+Examples:
+- Local vLLM/SGLang: `http://localhost:8000/v1`
+- Remote API: `https://api.example.com/v1`
+
+> **Note:** If you're using [Ollama](https://ollama.com), it natively supports the Anthropic API format, so you don't need this proxy. Just point your Claude SDK directly to `http://localhost:11434/v1`.
 
 ### 3. Start the Proxy
 
@@ -121,22 +135,31 @@ You can configure [Claude Code](https://github.com/anthropics/claude-code) to us
 
 ### Configuration Steps
 
-1. **Create or edit Claude Code config file** at `~/.claude/CLAUDE.md`:
+1. **Edit Claude Code config file** at `~/.claude/settings.json`:
 
-```markdown
-# Claude Code Configuration
-
-## API Settings
-
-- Claude API Base URL: http://localhost:8080
-- Claude API Key: dummy-key
-
-## Model Settings
-
-Use model: meta-llama/Llama-2-7b-chat-hf  # Your local model name
+```json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://localhost:8080",
+    "ANTHROPIC_API_KEY": "dummy-key",
+    "ANTHROPIC_MODEL": "meta-llama/Llama-2-7b-chat-hf",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "meta-llama/Llama-2-7b-chat-hf",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "meta-llama/Llama-2-7b-chat-hf",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "meta-llama/Llama-2-7b-chat-hf",
+    "ANTHROPIC_REASONING_MODEL": "meta-llama/Llama-2-7b-chat-hf"
+  }
+}
 ```
 
-2. **Alternatively, set environment variables** before running Claude Code:
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_MODEL` | General model setting |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Default model for Sonnet mode (Claude Code default) |
+| `ANTHROPIC_DEFAULT_OPUS_MODEL` | Default model for Opus mode |
+| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Default model for Haiku mode |
+| `ANTHROPIC_REASONING_MODEL` | Default model for reasoning tasks |
+
+2. **Or set environment variables** before running Claude Code:
 
 ```bash
 export ANTHROPIC_BASE_URL=http://localhost:8080
@@ -145,37 +168,35 @@ export ANTHROPIC_API_KEY=dummy-key
 claude
 ```
 
-3. **Or use the `--api-key` and `--base-url` flags**:
-
-```bash
-claude --api-key dummy-key --base-url http://localhost:8080
-```
-
 ### Complete Workflow Example
+
+Make sure `~/.claude/settings.json` is configured as described above.
 
 Terminal 1 - Start your local LLM:
 ```bash
 vllm serve meta-llama/Llama-2-7b-chat-hf
 ```
 
-Terminal 2 - Start the proxy:
+Terminal 2 - Start the proxy (background mode):
 ```bash
 export OA2A_OPENAI_BASE_URL=http://localhost:8000/v1
 export OA2A_OPENAI_API_KEY=dummy
 export OA2A_TAVILY_API_KEY="tvly-your-tavily-api-key"  # Optional: enable web search
 
-oa2a
+oa2a start
 ```
 
-Terminal 3 - Launch Claude Code with local LLM:
+Terminal 3 - Launch Claude Code:
 ```bash
-export ANTHROPIC_BASE_URL=http://localhost:8080
-export ANTHROPIC_API_KEY=dummy-key
-
 claude
 ```
 
 Now Claude Code will use your local LLM instead of the cloud API.
+
+To stop the proxy:
+```bash
+oa2a stop
+```
 
 ---
 
