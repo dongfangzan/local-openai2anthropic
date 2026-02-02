@@ -61,6 +61,10 @@ async def _stream_response(
     """
     Stream response from OpenAI and convert to Anthropic format.
     """
+    # Log streaming request start
+    logger.info(f"[OpenAI Stream] Starting streaming request to {url}")
+    logger.info(f"[OpenAI Stream] Request model: {json_data.get('model', 'unknown')}")
+
     try:
         async with client.stream(
             "POST", url, headers=headers, json=json_data
@@ -269,13 +273,18 @@ async def _stream_response(
                     # Handle new tool call (with id) - use separate if, not elif
                     # because a chunk may have both id AND arguments
                     if tool_call.get("id"):
+                        func = tool_call.get("function") or {}
+                        tool_name = func.get("name", "")
+                        logger.info(
+                            f"[OpenAI Stream] Tool call started - id={tool_call['id']}, name={tool_name}"
+                        )
+
                         if content_block_started:
                             yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': content_block_index})}\n\n"
                             content_block_started = False
                             content_block_index += 1
 
-                        func = tool_call.get("function") or {}
-                        yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': content_block_index, 'content_block': {'type': 'tool_use', 'id': tool_call['id'], 'name': func.get('name', ''), 'input': {}}})}\n\n"
+                        yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': content_block_index, 'content_block': {'type': 'tool_use', 'id': tool_call['id'], 'name': tool_name, 'input': {}}})}\n\n"
                         content_block_started = True
                         current_block_type = "tool_use"
 
@@ -295,6 +304,13 @@ async def _stream_response(
                     f"[Anthropic Stream Event] content_block_stop (final): {json.dumps(stop_block, ensure_ascii=False)}"
                 )
                 yield f"event: content_block_stop\ndata: {json.dumps(stop_block)}\n\n"
+
+            # Log stream summary before ending
+            logger.info(
+                f"[OpenAI Stream] Stream ended - message_id={message_id}, "
+                f"finish_reason={finish_reason}, input_tokens={input_tokens}, "
+                f"output_tokens={output_tokens}, content_blocks={content_block_index + 1}"
+            )
 
             # Message stop
             stop_event = {"type": "message_stop"}
