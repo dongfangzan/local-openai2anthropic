@@ -47,7 +47,7 @@ def _generate_server_tool_id() -> str:
     """Generate Anthropic-style server tool use ID (srvtoolu_...)."""
     # Generate 24 random alphanumeric characters
     chars = string.ascii_lowercase + string.digits
-    random_part = ''.join(secrets.choice(chars) for _ in range(24))
+    random_part = "".join(secrets.choice(chars) for _ in range(24))
     return f"srvtoolu_{random_part}"
 
 
@@ -62,12 +62,16 @@ async def _stream_response(
     Stream response from OpenAI and convert to Anthropic format.
     """
     try:
-        async with client.stream("POST", url, headers=headers, json=json_data) as response:
+        async with client.stream(
+            "POST", url, headers=headers, json=json_data
+        ) as response:
             if response.status_code != 200:
                 error_body = await response.aread()
                 try:
                     error_json = json.loads(error_body.decode())
-                    error_msg = error_json.get("error", {}).get("message", error_body.decode())
+                    error_msg = error_json.get("error", {}).get(
+                        "message", error_body.decode()
+                    )
                 except json.JSONDecodeError:
                     error_msg = error_body.decode()
 
@@ -98,7 +102,9 @@ async def _stream_response(
 
                 try:
                     chunk = json.loads(data)
-                    logger.debug(f"[OpenAI Stream Chunk] {json.dumps(chunk, ensure_ascii=False)}")
+                    logger.debug(
+                        f"[OpenAI Stream Chunk] {json.dumps(chunk, ensure_ascii=False)}"
+                    )
                 except json.JSONDecodeError:
                     continue
 
@@ -126,7 +132,9 @@ async def _stream_response(
                             },
                         },
                     }
-                    logger.debug(f"[Anthropic Stream Event] message_start: {json.dumps(start_event, ensure_ascii=False)}")
+                    logger.debug(
+                        f"[Anthropic Stream Event] message_start: {json.dumps(start_event, ensure_ascii=False)}"
+                    )
                     yield f"event: message_start\ndata: {json.dumps(start_event)}\n\n"
                     first_chunk = False
                     continue
@@ -139,9 +147,28 @@ async def _stream_response(
                             yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': content_block_index})}\n\n"
                             content_block_started = False
 
-                        stop_reason_map = {"stop": "end_turn", "length": "max_tokens", "tool_calls": "tool_use"}
-                        delta_event = {'type': 'message_delta', 'delta': {'stop_reason': stop_reason_map.get(finish_reason or 'stop', 'end_turn')}, 'usage': {'input_tokens': usage.get('prompt_tokens', 0), 'output_tokens': usage.get('completion_tokens', 0), 'cache_creation_input_tokens': None, 'cache_read_input_tokens': None}}
-                        logger.debug(f"[Anthropic Stream Event] message_delta: {json.dumps(delta_event, ensure_ascii=False)}")
+                        stop_reason_map = {
+                            "stop": "end_turn",
+                            "length": "max_tokens",
+                            "tool_calls": "tool_use",
+                        }
+                        delta_event = {
+                            "type": "message_delta",
+                            "delta": {
+                                "stop_reason": stop_reason_map.get(
+                                    finish_reason or "stop", "end_turn"
+                                )
+                            },
+                            "usage": {
+                                "input_tokens": usage.get("prompt_tokens", 0),
+                                "output_tokens": usage.get("completion_tokens", 0),
+                                "cache_creation_input_tokens": None,
+                                "cache_read_input_tokens": None,
+                            },
+                        }
+                        logger.debug(
+                            f"[Anthropic Stream Event] message_delta: {json.dumps(delta_event, ensure_ascii=False)}"
+                        )
                         yield f"event: message_delta\ndata: {json.dumps(delta_event)}\n\n"
                     continue
 
@@ -156,44 +183,75 @@ async def _stream_response(
                 if delta.get("reasoning_content"):
                     reasoning = delta["reasoning_content"]
                     # Start thinking content block if not already started
-                    if not content_block_started or current_block_type != 'thinking':
+                    if not content_block_started or current_block_type != "thinking":
                         # Close previous block if exists
                         if content_block_started:
-                            stop_block = {'type': 'content_block_stop', 'index': content_block_index}
-                            logger.debug(f"[Anthropic Stream Event] content_block_stop ({current_block_type}): {json.dumps(stop_block, ensure_ascii=False)}")
+                            stop_block = {
+                                "type": "content_block_stop",
+                                "index": content_block_index,
+                            }
+                            logger.debug(
+                                f"[Anthropic Stream Event] content_block_stop ({current_block_type}): {json.dumps(stop_block, ensure_ascii=False)}"
+                            )
                             yield f"event: content_block_stop\ndata: {json.dumps(stop_block)}\n\n"
                             content_block_index += 1
-                        start_block = {'type': 'content_block_start', 'index': content_block_index, 'content_block': {'type': 'thinking', 'thinking': ''}}
-                        logger.debug(f"[Anthropic Stream Event] content_block_start (thinking): {json.dumps(start_block, ensure_ascii=False)}")
+                        start_block = {
+                            "type": "content_block_start",
+                            "index": content_block_index,
+                            "content_block": {"type": "thinking", "thinking": ""},
+                        }
+                        logger.debug(
+                            f"[Anthropic Stream Event] content_block_start (thinking): {json.dumps(start_block, ensure_ascii=False)}"
+                        )
                         yield f"event: content_block_start\ndata: {json.dumps(start_block)}\n\n"
                         content_block_started = True
-                        current_block_type = 'thinking'
+                        current_block_type = "thinking"
 
-                    delta_block = {'type': 'content_block_delta', 'index': content_block_index, 'delta': {'type': 'thinking_delta', 'thinking': reasoning}}
+                    delta_block = {
+                        "type": "content_block_delta",
+                        "index": content_block_index,
+                        "delta": {"type": "thinking_delta", "thinking": reasoning},
+                    }
                     yield f"event: content_block_delta\ndata: {json.dumps(delta_block)}\n\n"
                     continue
 
                 # Handle content
                 if delta.get("content"):
-                    if not content_block_started or current_block_type != 'text':
+                    if not content_block_started or current_block_type != "text":
                         # Close previous block if exists
                         if content_block_started:
-                            stop_block = {'type': 'content_block_stop', 'index': content_block_index}
-                            logger.debug(f"[Anthropic Stream Event] content_block_stop ({current_block_type}): {json.dumps(stop_block, ensure_ascii=False)}")
+                            stop_block = {
+                                "type": "content_block_stop",
+                                "index": content_block_index,
+                            }
+                            logger.debug(
+                                f"[Anthropic Stream Event] content_block_stop ({current_block_type}): {json.dumps(stop_block, ensure_ascii=False)}"
+                            )
                             yield f"event: content_block_stop\ndata: {json.dumps(stop_block)}\n\n"
                             content_block_index += 1
-                        start_block = {'type': 'content_block_start', 'index': content_block_index, 'content_block': {'type': 'text', 'text': ''}}
-                        logger.debug(f"[Anthropic Stream Event] content_block_start (text): {json.dumps(start_block, ensure_ascii=False)}")
+                        start_block = {
+                            "type": "content_block_start",
+                            "index": content_block_index,
+                            "content_block": {"type": "text", "text": ""},
+                        }
+                        logger.debug(
+                            f"[Anthropic Stream Event] content_block_start (text): {json.dumps(start_block, ensure_ascii=False)}"
+                        )
                         yield f"event: content_block_start\ndata: {json.dumps(start_block)}\n\n"
                         content_block_started = True
-                        current_block_type = 'text'
+                        current_block_type = "text"
 
-                    delta_block = {'type': 'content_block_delta', 'index': content_block_index, 'delta': {'type': 'text_delta', 'text': delta['content']}}
+                    delta_block = {
+                        "type": "content_block_delta",
+                        "index": content_block_index,
+                        "delta": {"type": "text_delta", "text": delta["content"]},
+                    }
                     yield f"event: content_block_delta\ndata: {json.dumps(delta_block)}\n\n"
 
                 # Handle tool calls
-                if delta.get("tool_calls"):
-                    tool_call = delta["tool_calls"][0]
+                tool_calls = delta.get("tool_calls", [])
+                if tool_calls:
+                    tool_call = tool_calls[0]
 
                     if tool_call.get("id"):
                         if content_block_started:
@@ -201,28 +259,36 @@ async def _stream_response(
                             content_block_started = False
                             content_block_index += 1
 
-                        func = tool_call.get('function') or {}
+                        func = tool_call.get("function") or {}
                         yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': content_block_index, 'content_block': {'type': 'tool_use', 'id': tool_call['id'], 'name': func.get('name', ''), 'input': {}}})}\n\n"
                         content_block_started = True
-                        current_block_type = 'tool_use'
+                        current_block_type = "tool_use"
 
-                    elif (tool_call.get('function') or {}).get("arguments"):
-                        args = (tool_call.get('function') or {}).get("arguments", "")
+                    elif (tool_call.get("function") or {}).get("arguments"):
+                        args = (tool_call.get("function") or {}).get("arguments", "")
                         yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': content_block_index, 'delta': {'type': 'input_json_delta', 'partial_json': args}})}\n\n"
 
             # Close final content block
             if content_block_started:
-                stop_block = {'type': 'content_block_stop', 'index': content_block_index}
-                logger.debug(f"[Anthropic Stream Event] content_block_stop (final): {json.dumps(stop_block, ensure_ascii=False)}")
+                stop_block = {
+                    "type": "content_block_stop",
+                    "index": content_block_index,
+                }
+                logger.debug(
+                    f"[Anthropic Stream Event] content_block_stop (final): {json.dumps(stop_block, ensure_ascii=False)}"
+                )
                 yield f"event: content_block_stop\ndata: {json.dumps(stop_block)}\n\n"
 
             # Message stop
-            stop_event = {'type': 'message_stop'}
-            logger.debug(f"[Anthropic Stream Event] message_stop: {json.dumps(stop_event, ensure_ascii=False)}")
+            stop_event = {"type": "message_stop"}
+            logger.debug(
+                f"[Anthropic Stream Event] message_stop: {json.dumps(stop_event, ensure_ascii=False)}"
+            )
             yield f"event: message_stop\ndata: {json.dumps(stop_event)}\n\n"
 
     except Exception as e:
         import traceback
+
         error_msg = f"{str(e)}\n{traceback.format_exc()}"
         logger.error(f"Stream error: {error_msg}")
         error_event = AnthropicErrorResponse(
@@ -237,17 +303,21 @@ async def _convert_result_to_stream(
 ) -> AsyncGenerator[str, None]:
     """Convert a JSONResponse to streaming SSE format."""
     import time
-    
+
     body = json.loads(result.body)
     message_id = body.get("id", f"msg_{int(time.time() * 1000)}")
     content = body.get("content", [])
     usage = body.get("usage", {})
     stop_reason = body.get("stop_reason", "end_turn")
-    
+
     # Map stop_reason
-    stop_reason_map = {"end_turn": "stop", "max_tokens": "length", "tool_use": "tool_calls"}
+    stop_reason_map = {
+        "end_turn": "stop",
+        "max_tokens": "length",
+        "tool_use": "tool_calls",
+    }
     openai_stop_reason = stop_reason_map.get(stop_reason, "stop")
-    
+
     # 1. message_start event
     start_event = {
         "type": "message_start",
@@ -268,7 +338,7 @@ async def _convert_result_to_stream(
         },
     }
     yield f"event: message_start\ndata: {json.dumps(start_event)}\n\n"
-    
+
     # 2. Process content blocks
     for i, block in enumerate(content):
         block_type = block.get("type")
@@ -305,7 +375,7 @@ async def _convert_result_to_stream(
             if thinking_text:
                 yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': i, 'delta': {'type': 'thinking_delta', 'thinking': thinking_text}})}\n\n"
             yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': i})}\n\n"
-    
+
     # 3. message_delta with final usage
     delta_event = {
         "type": "message_delta",
@@ -319,7 +389,7 @@ async def _convert_result_to_stream(
         },
     }
     yield f"event: message_delta\ndata: {json.dumps(delta_event)}\n\n"
-    
+
     # 4. message_stop
     yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop'})}\n\n"
 
@@ -406,12 +476,16 @@ async def _handle_with_server_tools(
         async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
             try:
                 # Log full request for debugging
-                logger.debug(f"Request body: {json.dumps(params, indent=2, default=str)[:3000]}")
-                
+                logger.debug(
+                    f"Request body: {json.dumps(params, indent=2, default=str)[:3000]}"
+                )
+
                 response = await client.post(url, headers=headers, json=params)
 
                 if response.status_code != 200:
-                    logger.error(f"OpenAI API error: {response.status_code} - {response.text}")
+                    logger.error(
+                        f"OpenAI API error: {response.status_code} - {response.text}"
+                    )
                     error_response = AnthropicErrorResponse(
                         error=AnthropicError(type="api_error", message=response.text)
                     )
@@ -421,36 +495,45 @@ async def _handle_with_server_tools(
                     )
 
                 completion_data = response.json()
-                logger.debug(f"OpenAI response: {json.dumps(completion_data, indent=2)[:500]}...")
+                logger.debug(
+                    f"OpenAI response: {json.dumps(completion_data, indent=2)[:500]}..."
+                )
                 from openai.types.chat import ChatCompletion
+
                 completion = ChatCompletion.model_validate(completion_data)
 
                 # Check for server tool calls
                 server_tool_calls = []
                 other_tool_calls = []
-                
+
                 tool_calls = completion.choices[0].message.tool_calls
-                logger.info(f"Model returned tool_calls: {len(tool_calls) if tool_calls else 0}")
+                logger.info(
+                    f"Model returned tool_calls: {len(tool_calls) if tool_calls else 0}"
+                )
 
                 if tool_calls:
                     for tc in tool_calls:
                         func_name = tc.function.name if tc.function else ""
                         logger.info(f"  Tool call: {func_name}")
-                        
+
                         # Generate Anthropic-style ID for server tools
-                        is_server = handler.is_server_tool_call({
-                            "id": tc.id,
-                            "function": {"name": func_name, "arguments": ""},
-                        })
-                        
+                        is_server = handler.is_server_tool_call(
+                            {
+                                "id": tc.id,
+                                "function": {"name": func_name, "arguments": ""},
+                            }
+                        )
+
                         # Use Anthropic-style ID for server tools, original ID otherwise
                         tool_id = _generate_server_tool_id() if is_server else tc.id
-                        
+
                         tc_dict = {
                             "id": tool_id,
                             "function": {
                                 "name": func_name,
-                                "arguments": tc.function.arguments if tc.function else "{}",
+                                "arguments": tc.function.arguments
+                                if tc.function
+                                else "{}",
                             },
                         }
                         logger.info(f"    Is server tool: {is_server}, ID: {tool_id}")
@@ -460,19 +543,25 @@ async def _handle_with_server_tools(
                             other_tool_calls.append(tc)
 
                 # No server tool calls - we're done
-                logger.info(f"Server tool calls: {len(server_tool_calls)}, Other: {len(other_tool_calls)}")
+                logger.info(
+                    f"Server tool calls: {len(server_tool_calls)}, Other: {len(other_tool_calls)}"
+                )
                 if not server_tool_calls:
                     message = convert_openai_to_anthropic(completion, model)
 
                     if accumulated_content:
                         message_dict = message.model_dump()
-                        message_dict["content"] = accumulated_content + message_dict.get("content", [])
-                        
+                        message_dict["content"] = (
+                            accumulated_content + message_dict.get("content", [])
+                        )
+
                         if message_dict.get("usage"):
                             message_dict["usage"]["server_tool_use"] = handler.usage
-                        
+
                         # Log full response for debugging
-                        logger.info(f"Response content blocks: {json.dumps(message_dict.get('content', []), ensure_ascii=False)[:1000]}")
+                        logger.info(
+                            f"Response content blocks: {json.dumps(message_dict.get('content', []), ensure_ascii=False)[:1000]}"
+                        )
                         logger.info(f"Response usage: {message_dict.get('usage')}")
                         logger.info(f"Server tool use count: {handler.usage}")
 
@@ -489,6 +578,7 @@ async def _handle_with_server_tools(
                         tool_class = handler.server_tools.get(func_name)
                         if tool_class:
                             from local_openai2anthropic.server_tools import ToolResult
+
                             error_result = ToolResult(
                                 success=False,
                                 content=[],
@@ -520,14 +610,16 @@ async def _handle_with_server_tools(
                     accumulated_content.extend(content_blocks)
 
                     # Track for assistant message
-                    assistant_tool_calls.append({
-                        "id": call["id"],
-                        "type": "function",
-                        "function": {
-                            "name": call["function"]["name"],
-                            "arguments": call["function"]["arguments"],
-                        },
-                    })
+                    assistant_tool_calls.append(
+                        {
+                            "id": call["id"],
+                            "type": "function",
+                            "function": {
+                                "name": call["function"]["name"],
+                                "arguments": call["function"]["arguments"],
+                            },
+                        }
+                    )
                     tool_results.append(tool_result)
 
                 # Add to messages for next iteration
@@ -538,7 +630,9 @@ async def _handle_with_server_tools(
 
             except httpx.TimeoutException:
                 error_response = AnthropicErrorResponse(
-                    error=AnthropicError(type="timeout_error", message="Request timed out")
+                    error=AnthropicError(
+                        type="timeout_error", message="Request timed out"
+                    )
                 )
                 raise HTTPException(
                     status_code=HTTPStatus.GATEWAY_TIMEOUT,
@@ -576,14 +670,18 @@ def _add_tool_results_to_messages(
     # Add tool results
     if is_error:
         for call in tool_calls:
-            messages.append({
-                "role": "tool",
-                "tool_call_id": call["id"],
-                "content": json.dumps({
-                    "error": "max_uses_exceeded",
-                    "message": "Maximum tool uses exceeded.",
-                }),
-            })
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call["id"],
+                    "content": json.dumps(
+                        {
+                            "error": "max_uses_exceeded",
+                            "message": "Maximum tool uses exceeded.",
+                        }
+                    ),
+                }
+            )
     elif tool_results:
         messages.extend(tool_results)
 
@@ -611,12 +709,16 @@ async def create_message(
     try:
         body_bytes = await request.body()
         body_json = json.loads(body_bytes.decode("utf-8"))
-        logger.debug(f"[Anthropic Request] {json.dumps(body_json, ensure_ascii=False, indent=2)}")
+        logger.debug(
+            f"[Anthropic Request] {json.dumps(body_json, ensure_ascii=False, indent=2)}"
+        )
         anthropic_params = body_json
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in request body: {e}")
         error_response = AnthropicErrorResponse(
-            error=AnthropicError(type="invalid_request_error", message=f"Invalid JSON: {e}")
+            error=AnthropicError(
+                type="invalid_request_error", message=f"Invalid JSON: {e}"
+            )
         )
         return JSONResponse(status_code=422, content=error_response.model_dump())
     except Exception as e:
@@ -629,28 +731,38 @@ async def create_message(
     # Validate request shape early (avoid making upstream calls for obviously invalid requests)
     if not isinstance(anthropic_params, dict):
         error_response = AnthropicErrorResponse(
-            error=AnthropicError(type="invalid_request_error", message="Request body must be a JSON object")
+            error=AnthropicError(
+                type="invalid_request_error",
+                message="Request body must be a JSON object",
+            )
         )
         return JSONResponse(status_code=422, content=error_response.model_dump())
 
     model_value = anthropic_params.get("model")
     if not isinstance(model_value, str) or not model_value.strip():
         error_response = AnthropicErrorResponse(
-            error=AnthropicError(type="invalid_request_error", message="Model must be a non-empty string")
+            error=AnthropicError(
+                type="invalid_request_error", message="Model must be a non-empty string"
+            )
         )
         return JSONResponse(status_code=422, content=error_response.model_dump())
 
     messages_value = anthropic_params.get("messages")
     if not isinstance(messages_value, list) or len(messages_value) == 0:
         error_response = AnthropicErrorResponse(
-            error=AnthropicError(type="invalid_request_error", message="Messages must be a non-empty list")
+            error=AnthropicError(
+                type="invalid_request_error",
+                message="Messages must be a non-empty list",
+            )
         )
         return JSONResponse(status_code=422, content=error_response.model_dump())
 
     max_tokens_value = anthropic_params.get("max_tokens")
     if not isinstance(max_tokens_value, int):
         error_response = AnthropicErrorResponse(
-            error=AnthropicError(type="invalid_request_error", message="max_tokens is required")
+            error=AnthropicError(
+                type="invalid_request_error", message="max_tokens is required"
+            )
         )
         return JSONResponse(status_code=422, content=error_response.model_dump())
 
@@ -668,10 +780,12 @@ async def create_message(
         enabled_server_tools=enabled_server_tools if has_server_tools else None,
     )
     openai_params: dict[str, Any] = dict(openai_params_obj)  # type: ignore
-    
+
     # Log converted OpenAI request (remove internal fields)
-    log_params = {k: v for k, v in openai_params.items() if not k.startswith('_')}
-    logger.debug(f"[OpenAI Request] {json.dumps(log_params, ensure_ascii=False, indent=2)}")
+    log_params = {k: v for k, v in openai_params.items() if not k.startswith("_")}
+    logger.debug(
+        f"[OpenAI Request] {json.dumps(log_params, ensure_ascii=False, indent=2)}"
+    )
 
     stream = openai_params.get("stream", False)
     model = openai_params.get("model", "")
@@ -698,7 +812,7 @@ async def create_message(
         result = await _handle_with_server_tools(
             openai_params, url, headers, settings, tool_classes, model
         )
-        
+
         # If original request was streaming, convert result to streaming format
         if stream:
             return StreamingResponse(
@@ -728,20 +842,27 @@ async def create_message(
                     )
 
                 openai_completion = response.json()
-                logger.debug(f"[OpenAI Response] {json.dumps(openai_completion, ensure_ascii=False, indent=2)}")
-                
+                logger.debug(
+                    f"[OpenAI Response] {json.dumps(openai_completion, ensure_ascii=False, indent=2)}"
+                )
+
                 from openai.types.chat import ChatCompletion
+
                 completion = ChatCompletion.model_validate(openai_completion)
                 anthropic_message = convert_openai_to_anthropic(completion, model)
-                
+
                 anthropic_response = anthropic_message.model_dump()
-                logger.debug(f"[Anthropic Response] {json.dumps(anthropic_response, ensure_ascii=False, indent=2)}")
+                logger.debug(
+                    f"[Anthropic Response] {json.dumps(anthropic_response, ensure_ascii=False, indent=2)}"
+                )
 
                 return JSONResponse(content=anthropic_response)
 
             except httpx.TimeoutException:
                 error_response = AnthropicErrorResponse(
-                    error=AnthropicError(type="timeout_error", message="Request timed out")
+                    error=AnthropicError(
+                        type="timeout_error", message="Request timed out"
+                    )
                 )
                 raise HTTPException(
                     status_code=HTTPStatus.GATEWAY_TIMEOUT,
@@ -798,10 +919,14 @@ async def count_tokens(
     try:
         body_bytes = await request.body()
         body_json = json.loads(body_bytes.decode("utf-8"))
-        logger.debug(f"[Count Tokens Request] {json.dumps(body_json, ensure_ascii=False, indent=2)}")
+        logger.debug(
+            f"[Count Tokens Request] {json.dumps(body_json, ensure_ascii=False, indent=2)}"
+        )
     except json.JSONDecodeError as e:
         error_response = AnthropicErrorResponse(
-            error=AnthropicError(type="invalid_request_error", message=f"Invalid JSON: {e}")
+            error=AnthropicError(
+                type="invalid_request_error", message=f"Invalid JSON: {e}"
+            )
         )
         return JSONResponse(status_code=422, content=error_response.model_dump())
     except Exception as e:
@@ -813,14 +938,19 @@ async def count_tokens(
     # Validate required fields
     if not isinstance(body_json, dict):
         error_response = AnthropicErrorResponse(
-            error=AnthropicError(type="invalid_request_error", message="Request body must be a JSON object")
+            error=AnthropicError(
+                type="invalid_request_error",
+                message="Request body must be a JSON object",
+            )
         )
         return JSONResponse(status_code=422, content=error_response.model_dump())
 
     messages = body_json.get("messages", [])
     if not isinstance(messages, list):
         error_response = AnthropicErrorResponse(
-            error=AnthropicError(type="invalid_request_error", message="messages must be a list")
+            error=AnthropicError(
+                type="invalid_request_error", message="messages must be a list"
+            )
         )
         return JSONResponse(status_code=422, content=error_response.model_dump())
 
@@ -831,13 +961,13 @@ async def count_tokens(
     try:
         # Use tiktoken for token counting
         import tiktoken
-        
+
         # Map model names to tiktoken encoding
         # Claude models don't have direct tiktoken encodings, so we use cl100k_base as approximation
         encoding = tiktoken.get_encoding("cl100k_base")
-        
+
         total_tokens = 0
-        
+
         # Count system prompt tokens if present
         if system:
             if isinstance(system, str):
@@ -846,7 +976,7 @@ async def count_tokens(
                 for block in system:
                     if isinstance(block, dict) and block.get("type") == "text":
                         total_tokens += len(encoding.encode(block.get("text", "")))
-        
+
         # Count message tokens
         for msg in messages:
             content = msg.get("content", "")
@@ -861,24 +991,24 @@ async def count_tokens(
                             # Images are typically counted as a fixed number of tokens
                             # This is an approximation
                             total_tokens += 85  # Standard approximation for images
-        
+
         # Count tool definitions tokens
         if tools:
             for tool in tools:
                 tool_def = tool if isinstance(tool, dict) else tool.model_dump()
                 # Rough approximation for tool definitions
                 total_tokens += len(encoding.encode(json.dumps(tool_def)))
-        
+
         logger.debug(f"[Count Tokens Response] input_tokens: {total_tokens}")
-        
-        return JSONResponse(content={
-            "input_tokens": total_tokens
-        })
-        
+
+        return JSONResponse(content={"input_tokens": total_tokens})
+
     except Exception as e:
         logger.error(f"Token counting error: {e}")
         error_response = AnthropicErrorResponse(
-            error=AnthropicError(type="internal_error", message=f"Failed to count tokens: {str(e)}")
+            error=AnthropicError(
+                type="internal_error", message=f"Failed to count tokens: {str(e)}"
+            )
         )
         return JSONResponse(status_code=500, content=error_response.model_dump())
 
