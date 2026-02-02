@@ -415,7 +415,7 @@ async def _stream_response(
                             tool_call_buffers[tool_call_idx] = (
                                 tool_call_buffers.get(tool_call_idx, "") + args
                             )
-                            yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': content_block_index, 'delta': {'type': 'input_json_delta', 'partial_json': tool_call_buffers[tool_call_idx]}})}\n\n"
+                            yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': content_block_index, 'delta': {'type': 'input_json_delta', 'partial_json': args}})}\n\n"
 
             # Close final content block
             if content_block_started:
