@@ -512,8 +512,9 @@ async def _handle_with_server_tools(
                     )
 
                 completion_data = response.json()
-                logger.debug(
-                    f"OpenAI response: {json.dumps(completion_data, indent=2)[:500]}..."
+                # Log raw OpenAI response for server tools
+                logger.info(
+                    f"[OpenAI Response (Server Tools)] {json.dumps(completion_data, ensure_ascii=False, indent=2)[:2000]}"
                 )
                 from openai.types.chat import ChatCompletion
 
@@ -531,7 +532,12 @@ async def _handle_with_server_tools(
                 if tool_calls:
                     for tc in tool_calls:
                         func_name = tc.function.name if tc.function else ""
+                        func_args = tc.function.arguments if tc.function else "{}"
                         logger.info(f"  Tool call: {func_name}")
+                        logger.info(f"    Tool ID: {tc.id}")
+                        logger.info(
+                            f"    Arguments: {func_args[:200]}"
+                        )  # Log first 200 chars
 
                         # Generate Anthropic-style ID for server tools
                         is_server = handler.is_server_tool_call(
@@ -859,9 +865,32 @@ async def create_message(
                     )
 
                 openai_completion = response.json()
-                logger.debug(
-                    f"[OpenAI Response] {json.dumps(openai_completion, ensure_ascii=False, indent=2)}"
+                # Log raw OpenAI response
+                logger.info(
+                    f"[OpenAI Raw Response] {json.dumps(openai_completion, ensure_ascii=False, indent=2)[:2000]}"
                 )
+
+                # Log response details
+                if openai_completion.get("choices"):
+                    choice = openai_completion["choices"][0]
+                    message = choice.get("message", {})
+                    finish_reason = choice.get("finish_reason")
+                    content_preview = (
+                        message.get("content", "")[:100]
+                        if message.get("content")
+                        else ""
+                    )
+                    tool_calls_count = (
+                        len(message.get("tool_calls", []))
+                        if message.get("tool_calls")
+                        else 0
+                    )
+                    logger.info(
+                        f"[OpenAI Response Details] finish_reason={finish_reason}, "
+                        f"content_length={len(message.get('content', ''))}, "
+                        f"tool_calls={tool_calls_count}, "
+                        f"content_preview={content_preview[:50]!r}"
+                    )
 
                 from openai.types.chat import ChatCompletion
 
@@ -869,9 +898,26 @@ async def create_message(
                 anthropic_message = convert_openai_to_anthropic(completion, model)
 
                 anthropic_response = anthropic_message.model_dump()
-                logger.debug(
-                    f"[Anthropic Response] {json.dumps(anthropic_response, ensure_ascii=False, indent=2)}"
+                # Log converted Anthropic response
+                logger.info(
+                    f"[Anthropic Converted Response] {json.dumps(anthropic_response, ensure_ascii=False, indent=2)[:2000]}"
                 )
+
+                # Log Anthropic response details
+                content_blocks = anthropic_response.get("content", [])
+                stop_reason = anthropic_response.get("stop_reason")
+                usage = anthropic_response.get("usage", {})
+                logger.info(
+                    f"[Anthropic Response Details] stop_reason={stop_reason}, "
+                    f"content_blocks={len(content_blocks)}, "
+                    f"input_tokens={usage.get('input_tokens')}, "
+                    f"output_tokens={usage.get('output_tokens')}"
+                )
+
+                # Log content block types
+                if content_blocks:
+                    block_types = [block.get("type") for block in content_blocks]
+                    logger.info(f"[Anthropic Content Blocks] types={block_types}")
 
                 return JSONResponse(content=anthropic_response)
 
