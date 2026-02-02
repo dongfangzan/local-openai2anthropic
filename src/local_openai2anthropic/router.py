@@ -179,6 +179,19 @@ async def _stream_response(
                 if choice.get("finish_reason"):
                     finish_reason = choice["finish_reason"]
 
+                    # When finish_reason is tool_calls, we need to close the current block
+                    # and prepare to send message_delta
+                    if finish_reason == "tool_calls" and content_block_started:
+                        stop_block = {
+                            "type": "content_block_stop",
+                            "index": content_block_index,
+                        }
+                        logger.debug(
+                            f"[Anthropic Stream Event] content_block_stop (tool_calls): {json.dumps(stop_block, ensure_ascii=False)}"
+                        )
+                        yield f"event: content_block_stop\ndata: {json.dumps(stop_block)}\n\n"
+                        content_block_started = False
+
                 # Handle reasoning content (thinking)
                 if delta.get("reasoning_content"):
                     reasoning = delta["reasoning_content"]
@@ -253,6 +266,8 @@ async def _stream_response(
                 if tool_calls:
                     tool_call = tool_calls[0]
 
+                    # Handle new tool call (with id) - use separate if, not elif
+                    # because a chunk may have both id AND arguments
                     if tool_call.get("id"):
                         if content_block_started:
                             yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': content_block_index})}\n\n"
@@ -264,7 +279,9 @@ async def _stream_response(
                         content_block_started = True
                         current_block_type = "tool_use"
 
-                    elif (tool_call.get("function") or {}).get("arguments"):
+                    # Handle tool call arguments - always check separately
+                    # Note: This is intentionally NOT elif, as a single chunk may contain both
+                    if (tool_call.get("function") or {}).get("arguments"):
                         args = (tool_call.get("function") or {}).get("arguments", "")
                         yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': content_block_index, 'delta': {'type': 'input_json_delta', 'partial_json': args}})}\n\n"
 
