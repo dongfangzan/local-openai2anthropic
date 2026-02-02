@@ -54,6 +54,7 @@ def convert_anthropic_to_openai(
     tools = anthropic_params.get("tools")
     top_k = anthropic_params.get("top_k")
     top_p = anthropic_params.get("top_p", 0.95)
+    repetition_penalty = anthropic_params.get("repetition_penalty", 1.1)
     thinking = anthropic_params.get("thinking")
     # metadata is accepted but not forwarded to OpenAI
 
@@ -102,6 +103,7 @@ def convert_anthropic_to_openai(
         "messages": openai_messages,
         "max_tokens": max_tokens,
         "stream": stream,
+        "repetition_penalty": repetition_penalty,
     }
 
     # Always include usage in stream for accurate token counting

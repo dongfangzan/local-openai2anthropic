@@ -8,7 +8,7 @@ import logging
 import secrets
 import string
 from http import HTTPStatus
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, cast
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -51,6 +51,87 @@ def _generate_server_tool_id() -> str:
     return f"srvtoolu_{random_part}"
 
 
+def _normalize_usage(usage: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(usage, dict):
+        return usage
+    allowed_keys = {
+        "input_tokens",
+        "output_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
+        "server_tool_use",
+    }
+    normalized = {k: v for k, v in usage.items() if k in allowed_keys}
+    return normalized or None
+
+
+def _count_tokens(text: str) -> int:
+    try:
+        import tiktoken  # type: ignore[import-not-found]
+    except Exception:
+        return 0
+
+    encoding = tiktoken.get_encoding("cl100k_base")
+    return len(encoding.encode(text))
+
+
+def _chunk_text(text: str, chunk_size: int = 200) -> list[str]:
+    if not text:
+        return []
+    return [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+
+
+def _estimate_input_tokens(openai_params: dict[str, Any]) -> int:
+    try:
+        import tiktoken  # type: ignore[import-not-found]
+    except Exception:
+        return 0
+
+    encoding = tiktoken.get_encoding("cl100k_base")
+    total_tokens = 0
+
+    system = openai_params.get("system")
+    if isinstance(system, str):
+        total_tokens += len(encoding.encode(system))
+
+    messages = openai_params.get("messages", [])
+    if isinstance(messages, list):
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                total_tokens += len(encoding.encode(content))
+            elif isinstance(content, list):
+                for block in content:
+                    if not isinstance(block, dict):
+                        total_tokens += len(encoding.encode(str(block)))
+                        continue
+                    block_type = block.get("type")
+                    if block_type == "text":
+                        total_tokens += len(encoding.encode(block.get("text", "")))
+                    elif block_type == "image_url":
+                        total_tokens += 85
+
+            tool_calls = msg.get("tool_calls")
+            if isinstance(tool_calls, list) and tool_calls:
+                total_tokens += len(encoding.encode(json.dumps(tool_calls)))
+
+    tools = openai_params.get("tools")
+    if isinstance(tools, list) and tools:
+        total_tokens += len(encoding.encode(json.dumps(tools)))
+
+    tool_choice = openai_params.get("tool_choice")
+    if tool_choice is not None:
+        total_tokens += len(encoding.encode(json.dumps(tool_choice)))
+
+    response_format = openai_params.get("response_format")
+    if response_format is not None:
+        total_tokens += len(encoding.encode(json.dumps(response_format)))
+
+    return total_tokens
+
+
 async def _stream_response(
     client: httpx.AsyncClient,
     url: str,
@@ -61,23 +142,23 @@ async def _stream_response(
     """
     Stream response from OpenAI and convert to Anthropic format.
     """
-    # Log streaming request start
-    logger.info(f"[OpenAI Stream] Starting streaming request to {url}")
-    logger.info(f"[OpenAI Stream] Request model: {json_data.get('model', 'unknown')}")
-
     try:
         async with client.stream(
             "POST", url, headers=headers, json=json_data
         ) as response:
             if response.status_code != 200:
                 error_body = await response.aread()
+                error_text = error_body.decode("utf-8", errors="replace").strip()
                 try:
-                    error_json = json.loads(error_body.decode())
-                    error_msg = error_json.get("error", {}).get(
-                        "message", error_body.decode()
-                    )
+                    error_json = json.loads(error_text) if error_text else {}
+                    error_msg = error_json.get("error", {}).get("message") or error_text
                 except json.JSONDecodeError:
-                    error_msg = error_body.decode()
+                    error_msg = error_text
+                if not error_msg:
+                    error_msg = (
+                        response.reason_phrase
+                        or f"Upstream API error ({response.status_code})"
+                    )
 
                 error_event = AnthropicErrorResponse(
                     error=AnthropicError(type="api_error", message=error_msg)
@@ -91,10 +172,14 @@ async def _stream_response(
             content_block_started = False
             content_block_index = 0
             current_block_type = None  # 'thinking', 'text', or 'tool_use'
+            current_tool_call_index = None
+            tool_call_buffers: dict[int, str] = {}
             finish_reason = None
-            input_tokens = 0
+            input_tokens = _estimate_input_tokens(json_data)
             output_tokens = 0
             message_id = None
+            sent_message_delta = False
+            pending_text_prefix = ""
 
             async for line in response.aiter_lines():
                 if not line.startswith("data: "):
@@ -102,6 +187,30 @@ async def _stream_response(
 
                 data = line[6:]
                 if data == "[DONE]":
+                    if not sent_message_delta:
+                        stop_reason_map = {
+                            "stop": "end_turn",
+                            "length": "max_tokens",
+                            "tool_calls": "tool_use",
+                        }
+                        delta_event = {
+                            "type": "message_delta",
+                            "delta": {
+                                "stop_reason": stop_reason_map.get(
+                                    finish_reason or "stop", "end_turn"
+                                )
+                            },
+                            "usage": {
+                                "input_tokens": input_tokens,
+                                "output_tokens": output_tokens,
+                                "cache_creation_input_tokens": None,
+                                "cache_read_input_tokens": None,
+                            },
+                        }
+                        logger.debug(
+                            f"[Anthropic Stream Event] message_delta: {json.dumps(delta_event, ensure_ascii=False)}"
+                        )
+                        yield f"event: message_delta\ndata: {json.dumps(delta_event)}\n\n"
                     break
 
                 try:
@@ -116,7 +225,7 @@ async def _stream_response(
                 if first_chunk:
                     message_id = chunk.get("id", "")
                     usage = chunk.get("usage") or {}
-                    input_tokens = usage.get("prompt_tokens", 0)
+                    input_tokens = usage.get("prompt_tokens", input_tokens)
 
                     start_event = {
                         "type": "message_start",
@@ -147,6 +256,8 @@ async def _stream_response(
                 if not chunk.get("choices"):
                     usage = chunk.get("usage") or {}
                     if usage:
+                        input_tokens = usage.get("prompt_tokens", input_tokens)
+                        output_tokens = usage.get("completion_tokens", output_tokens)
                         if content_block_started:
                             yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': content_block_index})}\n\n"
                             content_block_started = False
@@ -164,7 +275,9 @@ async def _stream_response(
                                 )
                             },
                             "usage": {
-                                "input_tokens": usage.get("prompt_tokens", 0),
+                                "input_tokens": usage.get(
+                                    "prompt_tokens", input_tokens
+                                ),
                                 "output_tokens": usage.get("completion_tokens", 0),
                                 "cache_creation_input_tokens": None,
                                 "cache_read_input_tokens": None,
@@ -174,6 +287,7 @@ async def _stream_response(
                             f"[Anthropic Stream Event] message_delta: {json.dumps(delta_event, ensure_ascii=False)}"
                         )
                         yield f"event: message_delta\ndata: {json.dumps(delta_event)}\n\n"
+                        sent_message_delta = True
                     continue
 
                 choice = chunk["choices"][0]
@@ -183,22 +297,10 @@ async def _stream_response(
                 if choice.get("finish_reason"):
                     finish_reason = choice["finish_reason"]
 
-                    # When finish_reason is tool_calls, we need to close the current block
-                    # and prepare to send message_delta
-                    if finish_reason == "tool_calls" and content_block_started:
-                        stop_block = {
-                            "type": "content_block_stop",
-                            "index": content_block_index,
-                        }
-                        logger.debug(
-                            f"[Anthropic Stream Event] content_block_stop (tool_calls): {json.dumps(stop_block, ensure_ascii=False)}"
-                        )
-                        yield f"event: content_block_stop\ndata: {json.dumps(stop_block)}\n\n"
-                        content_block_started = False
-
                 # Handle reasoning content (thinking)
                 if delta.get("reasoning_content"):
                     reasoning = delta["reasoning_content"]
+                    pending_text_prefix = ""
                     # Start thinking content block if not already started
                     if not content_block_started or current_block_type != "thinking":
                         # Close previous block if exists
@@ -215,7 +317,11 @@ async def _stream_response(
                         start_block = {
                             "type": "content_block_start",
                             "index": content_block_index,
-                            "content_block": {"type": "thinking", "thinking": ""},
+                            "content_block": {
+                                "type": "thinking",
+                                "thinking": "",
+                                "signature": "",
+                            },
                         }
                         logger.debug(
                             f"[Anthropic Stream Event] content_block_start (thinking): {json.dumps(start_block, ensure_ascii=False)}"
@@ -224,17 +330,26 @@ async def _stream_response(
                         content_block_started = True
                         current_block_type = "thinking"
 
-                    delta_block = {
-                        "type": "content_block_delta",
-                        "index": content_block_index,
-                        "delta": {"type": "thinking_delta", "thinking": reasoning},
-                    }
-                    yield f"event: content_block_delta\ndata: {json.dumps(delta_block)}\n\n"
+                    for chunk in _chunk_text(reasoning):
+                        delta_block = {
+                            "type": "content_block_delta",
+                            "index": content_block_index,
+                            "delta": {"type": "thinking_delta", "thinking": chunk},
+                        }
+                        yield f"event: content_block_delta\ndata: {json.dumps(delta_block)}\n\n"
                     continue
 
                 # Handle content
-                if delta.get("content"):
+                if isinstance(delta.get("content"), str):
+                    content_text = delta.get("content", "")
+                    if not content_text:
+                        continue
+                    if content_text.strip() == "(no content)":
+                        continue
                     if not content_block_started or current_block_type != "text":
+                        if not content_text.strip():
+                            pending_text_prefix += content_text
+                            continue
                         # Close previous block if exists
                         if content_block_started:
                             stop_block = {
@@ -258,41 +373,64 @@ async def _stream_response(
                         content_block_started = True
                         current_block_type = "text"
 
+                    if pending_text_prefix:
+                        content_text = pending_text_prefix + content_text
+                        pending_text_prefix = ""
+
+                    output_tokens += _count_tokens(content_text)
                     delta_block = {
                         "type": "content_block_delta",
                         "index": content_block_index,
-                        "delta": {"type": "text_delta", "text": delta["content"]},
+                        "delta": {"type": "text_delta", "text": content_text},
                     }
                     yield f"event: content_block_delta\ndata: {json.dumps(delta_block)}\n\n"
 
                 # Handle tool calls
-                tool_calls = delta.get("tool_calls", [])
-                if tool_calls:
-                    tool_call = tool_calls[0]
+                if delta.get("tool_calls"):
+                    pending_text_prefix = ""
+                    for tool_call in delta["tool_calls"]:
+                        tool_call_idx = tool_call.get("index", 0)
 
-                    # Handle new tool call (with id) - use separate if, not elif
-                    # because a chunk may have both id AND arguments
-                    if tool_call.get("id"):
-                        func = tool_call.get("function") or {}
-                        tool_name = func.get("name", "")
-                        logger.info(
-                            f"[OpenAI Stream] Tool call started - id={tool_call['id']}, name={tool_name}"
-                        )
+                        if tool_call.get("id"):
+                            if content_block_started and (
+                                current_block_type != "tool_use"
+                                or current_tool_call_index != tool_call_idx
+                            ):
+                                yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': content_block_index})}\n\n"
+                                content_block_started = False
+                                content_block_index += 1
 
-                        if content_block_started:
-                            yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': content_block_index})}\n\n"
-                            content_block_started = False
-                            content_block_index += 1
+                            if not content_block_started:
+                                func = tool_call.get("function") or {}
+                                yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': content_block_index, 'content_block': {'type': 'tool_use', 'id': tool_call['id'], 'name': func.get('name', ''), 'input': {}}})}\n\n"
+                                content_block_started = True
+                                current_block_type = "tool_use"
+                                current_tool_call_index = tool_call_idx
+                                tool_call_buffers.setdefault(tool_call_idx, "")
 
-                        yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': content_block_index, 'content_block': {'type': 'tool_use', 'id': tool_call['id'], 'name': tool_name, 'input': {}}})}\n\n"
-                        content_block_started = True
-                        current_block_type = "tool_use"
-
-                    # Handle tool call arguments - always check separately
-                    # Note: This is intentionally NOT elif, as a single chunk may contain both
-                    if (tool_call.get("function") or {}).get("arguments"):
-                        args = (tool_call.get("function") or {}).get("arguments", "")
-                        yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': content_block_index, 'delta': {'type': 'input_json_delta', 'partial_json': args}})}\n\n"
+                        if (tool_call.get("function") or {}).get("arguments"):
+                            args = (tool_call.get("function") or {}).get(
+                                "arguments", ""
+                            )
+                            if (
+                                not content_block_started
+                                or current_block_type != "tool_use"
+                                or current_tool_call_index != tool_call_idx
+                            ):
+                                if content_block_started:
+                                    yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': content_block_index})}\n\n"
+                                    content_block_index += 1
+                                func = tool_call.get("function") or {}
+                                tool_id = tool_call.get("id", "")
+                                yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': content_block_index, 'content_block': {'type': 'tool_use', 'id': tool_id, 'name': func.get('name', ''), 'input': {}}})}\n\n"
+                                content_block_started = True
+                                current_block_type = "tool_use"
+                                current_tool_call_index = tool_call_idx
+                                tool_call_buffers.setdefault(tool_call_idx, "")
+                            tool_call_buffers[tool_call_idx] = (
+                                tool_call_buffers.get(tool_call_idx, "") + args
+                            )
+                            yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': content_block_index, 'delta': {'type': 'input_json_delta', 'partial_json': args}})}\n\n"
 
             # Close final content block
             if content_block_started:
@@ -304,13 +442,6 @@ async def _stream_response(
                     f"[Anthropic Stream Event] content_block_stop (final): {json.dumps(stop_block, ensure_ascii=False)}"
                 )
                 yield f"event: content_block_stop\ndata: {json.dumps(stop_block)}\n\n"
-
-            # Log stream summary before ending
-            logger.info(
-                f"[OpenAI Stream] Stream ended - message_id={message_id}, "
-                f"finish_reason={finish_reason}, input_tokens={input_tokens}, "
-                f"output_tokens={output_tokens}, content_blocks={content_block_index + 1}"
-            )
 
             # Message stop
             stop_event = {"type": "message_stop"}
@@ -337,7 +468,7 @@ async def _convert_result_to_stream(
     """Convert a JSONResponse to streaming SSE format."""
     import time
 
-    body = json.loads(result.body)
+    body = json.loads(bytes(result.body).decode("utf-8"))
     message_id = body.get("id", f"msg_{int(time.time() * 1000)}")
     content = body.get("content", [])
     usage = body.get("usage", {})
@@ -384,6 +515,10 @@ async def _convert_result_to_stream(
 
         elif block_type == "tool_use":
             yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': i, 'content_block': {'type': 'tool_use', 'id': block.get('id', ''), 'name': block.get('name', ''), 'input': block.get('input', {})}})}\n\n"
+            tool_input = block.get("input", {})
+            if tool_input:
+                input_json = json.dumps(tool_input, ensure_ascii=False)
+                yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': i, 'delta': {'type': 'input_json_delta', 'partial_json': input_json}})}\n\n"
             yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': i})}\n\n"
 
         elif block_type == "server_tool_use":
@@ -393,17 +528,14 @@ async def _convert_result_to_stream(
 
         elif block_type == "web_search_tool_result":
             # Stream the tool result as its own content block.
-            # Some clients expect `results`, others expect `content`; include both when possible.
             tool_result_block = dict(block)
-            if "content" not in tool_result_block and "results" in tool_result_block:
-                tool_result_block["content"] = tool_result_block["results"]
-
             yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': i, 'content_block': tool_result_block})}\n\n"
             yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': i})}\n\n"
 
         elif block_type == "thinking":
             # Handle thinking blocks (BetaThinkingBlock)
-            yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': i, 'content_block': {'type': 'thinking', 'thinking': ''}})}\n\n"
+            signature = block.get("signature", "")
+            yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': i, 'content_block': {'type': 'thinking', 'thinking': '', 'signature': signature}})}\n\n"
             thinking_text = block.get("thinking", "")
             if thinking_text:
                 yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': i, 'delta': {'type': 'thinking_delta', 'thinking': thinking_text}})}\n\n"
@@ -456,6 +588,7 @@ class ServerToolHandler:
         """
         func_name = tool_call.get("function", {}).get("name")
         call_id = tool_call.get("id", "")
+        openai_call_id = tool_call.get("openai_id", call_id)
 
         tool_class = self.server_tools[func_name]
         config = self.configs.get(tool_class.tool_type, {})
@@ -476,7 +609,9 @@ class ServerToolHandler:
         content_blocks = tool_class.build_content_blocks(call_id, args, result)
 
         # Build tool result message for OpenAI
-        tool_result_msg = tool_class.build_tool_result_message(call_id, args, result)
+        tool_result_msg = tool_class.build_tool_result_message(
+            openai_call_id, args, result
+        )
 
         return content_blocks, tool_result_msg
 
@@ -519,8 +654,23 @@ async def _handle_with_server_tools(
                     logger.error(
                         f"OpenAI API error: {response.status_code} - {response.text}"
                     )
+                    raw_text = response.text
+                    try:
+                        if not raw_text:
+                            raw_text = response.content.decode(
+                                "utf-8", errors="replace"
+                            )
+                    except Exception:
+                        raw_text = ""
+                    if not raw_text:
+                        raw_text = response.reason_phrase or ""
+                    error_message = (raw_text or "").strip()
                     error_response = AnthropicErrorResponse(
-                        error=AnthropicError(type="api_error", message=response.text)
+                        error=AnthropicError(
+                            type="api_error",
+                            message=error_message
+                            or f"Upstream API error ({response.status_code})",
+                        )
                     )
                     return JSONResponse(
                         status_code=response.status_code,
@@ -528,9 +678,8 @@ async def _handle_with_server_tools(
                     )
 
                 completion_data = response.json()
-                # Log raw OpenAI response for server tools
-                logger.info(
-                    f"[OpenAI Response (Server Tools)] {json.dumps(completion_data, ensure_ascii=False, indent=2)[:2000]}"
+                logger.debug(
+                    f"OpenAI response: {json.dumps(completion_data, indent=2)[:500]}..."
                 )
                 from openai.types.chat import ChatCompletion
 
@@ -547,13 +696,9 @@ async def _handle_with_server_tools(
 
                 if tool_calls:
                     for tc in tool_calls:
-                        func_name = tc.function.name if tc.function else ""
-                        func_args = tc.function.arguments if tc.function else "{}"
+                        func = getattr(tc, "function", None)
+                        func_name = func.name if func else ""
                         logger.info(f"  Tool call: {func_name}")
-                        logger.info(f"    Tool ID: {tc.id}")
-                        logger.info(
-                            f"    Arguments: {func_args[:200]}"
-                        )  # Log first 200 chars
 
                         # Generate Anthropic-style ID for server tools
                         is_server = handler.is_server_tool_call(
@@ -564,18 +709,21 @@ async def _handle_with_server_tools(
                         )
 
                         # Use Anthropic-style ID for server tools, original ID otherwise
-                        tool_id = _generate_server_tool_id() if is_server else tc.id
+                        client_tool_id = (
+                            _generate_server_tool_id() if is_server else tc.id
+                        )
 
                         tc_dict = {
-                            "id": tool_id,
+                            "id": client_tool_id,
+                            "openai_id": tc.id,
                             "function": {
                                 "name": func_name,
-                                "arguments": tc.function.arguments
-                                if tc.function
-                                else "{}",
+                                "arguments": func.arguments if func else "{}",
                             },
                         }
-                        logger.info(f"    Is server tool: {is_server}, ID: {tool_id}")
+                        logger.info(
+                            f"    Is server tool: {is_server}, ID: {client_tool_id}"
+                        )
                         if is_server:
                             server_tool_calls.append(tc_dict)
                         else:
@@ -596,6 +744,9 @@ async def _handle_with_server_tools(
 
                         if message_dict.get("usage"):
                             message_dict["usage"]["server_tool_use"] = handler.usage
+                        message_dict["usage"] = _normalize_usage(
+                            message_dict.get("usage")
+                        )
 
                         # Log full response for debugging
                         logger.info(
@@ -606,7 +757,9 @@ async def _handle_with_server_tools(
 
                         return JSONResponse(content=message_dict)
 
-                    return JSONResponse(content=message.model_dump())
+                    message_dict = message.model_dump()
+                    message_dict["usage"] = _normalize_usage(message_dict.get("usage"))
+                    return JSONResponse(content=message_dict)
 
                 # Check max_uses limit
                 if total_tool_calls >= max_uses:
@@ -631,9 +784,23 @@ async def _handle_with_server_tools(
                             accumulated_content.extend(error_blocks)
 
                     # Continue with modified messages
+                    assistant_tool_calls = []
+                    for call in server_tool_calls:
+                        assistant_tool_calls.append(
+                            {
+                                "id": call.get("openai_id", call.get("id", "")),
+                                "type": "function",
+                                "function": {
+                                    "name": call.get("function", {}).get("name", ""),
+                                    "arguments": call.get("function", {}).get(
+                                        "arguments", "{}"
+                                    ),
+                                },
+                            }
+                        )
                     messages = params.get("messages", [])
                     messages = _add_tool_results_to_messages(
-                        messages, server_tool_calls, handler, is_error=True
+                        messages, assistant_tool_calls, handler, is_error=True
                     )
                     params["messages"] = messages
                     continue
@@ -651,7 +818,7 @@ async def _handle_with_server_tools(
                     # Track for assistant message
                     assistant_tool_calls.append(
                         {
-                            "id": call["id"],
+                            "id": call.get("openai_id", call.get("id", "")),
                             "type": "function",
                             "function": {
                                 "name": call["function"]["name"],
@@ -673,17 +840,17 @@ async def _handle_with_server_tools(
                         type="timeout_error", message="Request timed out"
                     )
                 )
-                raise HTTPException(
+                return JSONResponse(
                     status_code=HTTPStatus.GATEWAY_TIMEOUT,
-                    detail=error_response.model_dump(),
+                    content=error_response.model_dump(),
                 )
             except httpx.RequestError as e:
                 error_response = AnthropicErrorResponse(
                     error=AnthropicError(type="connection_error", message=str(e))
                 )
-                raise HTTPException(
+                return JSONResponse(
                     status_code=HTTPStatus.BAD_GATEWAY,
-                    detail=error_response.model_dump(),
+                    content=error_response.model_dump(),
                 )
 
 
@@ -709,10 +876,11 @@ def _add_tool_results_to_messages(
     # Add tool results
     if is_error:
         for call in tool_calls:
+            tool_call_id = call.get("openai_id", call.get("id", ""))
             messages.append(
                 {
                     "role": "tool",
-                    "tool_call_id": call["id"],
+                    "tool_call_id": tool_call_id,
                     "content": json.dumps(
                         {
                             "error": "max_uses_exceeded",
@@ -759,7 +927,7 @@ async def create_message(
                 type="invalid_request_error", message=f"Invalid JSON: {e}"
             )
         )
-        return JSONResponse(status_code=422, content=error_response.model_dump())
+        return JSONResponse(status_code=400, content=error_response.model_dump())
     except Exception as e:
         logger.error(f"Failed to parse request body: {e}")
         error_response = AnthropicErrorResponse(
@@ -775,7 +943,7 @@ async def create_message(
                 message="Request body must be a JSON object",
             )
         )
-        return JSONResponse(status_code=422, content=error_response.model_dump())
+        return JSONResponse(status_code=400, content=error_response.model_dump())
 
     model_value = anthropic_params.get("model")
     if not isinstance(model_value, str) or not model_value.strip():
@@ -784,7 +952,7 @@ async def create_message(
                 type="invalid_request_error", message="Model must be a non-empty string"
             )
         )
-        return JSONResponse(status_code=422, content=error_response.model_dump())
+        return JSONResponse(status_code=400, content=error_response.model_dump())
 
     messages_value = anthropic_params.get("messages")
     if not isinstance(messages_value, list) or len(messages_value) == 0:
@@ -794,7 +962,7 @@ async def create_message(
                 message="Messages must be a non-empty list",
             )
         )
-        return JSONResponse(status_code=422, content=error_response.model_dump())
+        return JSONResponse(status_code=400, content=error_response.model_dump())
 
     max_tokens_value = anthropic_params.get("max_tokens")
     if not isinstance(max_tokens_value, int):
@@ -803,7 +971,7 @@ async def create_message(
                 type="invalid_request_error", message="max_tokens is required"
             )
         )
-        return JSONResponse(status_code=422, content=error_response.model_dump())
+        return JSONResponse(status_code=400, content=error_response.model_dump())
 
     # Check for server tools
     tools = anthropic_params.get("tools", [])
@@ -815,7 +983,7 @@ async def create_message(
 
     # Convert Anthropic params to OpenAI params
     openai_params_obj = convert_anthropic_to_openai(
-        anthropic_params,
+        cast(MessageCreateParams, anthropic_params),
         enabled_server_tools=enabled_server_tools if has_server_tools else None,
     )
     openai_params: dict[str, Any] = dict(openai_params_obj)  # type: ignore
@@ -872,8 +1040,23 @@ async def create_message(
                 response = await client.post(url, headers=headers, json=openai_params)
 
                 if response.status_code != 200:
+                    raw_text = response.text
+                    try:
+                        if not raw_text:
+                            raw_text = response.content.decode(
+                                "utf-8", errors="replace"
+                            )
+                    except Exception:
+                        raw_text = ""
+                    if not raw_text:
+                        raw_text = response.reason_phrase or ""
+                    error_message = (raw_text or "").strip()
                     error_response = AnthropicErrorResponse(
-                        error=AnthropicError(type="api_error", message=response.text)
+                        error=AnthropicError(
+                            type="api_error",
+                            message=error_message
+                            or f"Upstream API error ({response.status_code})",
+                        )
                     )
                     return JSONResponse(
                         status_code=response.status_code,
@@ -881,32 +1064,9 @@ async def create_message(
                     )
 
                 openai_completion = response.json()
-                # Log raw OpenAI response
-                logger.info(
-                    f"[OpenAI Raw Response] {json.dumps(openai_completion, ensure_ascii=False, indent=2)[:2000]}"
+                logger.debug(
+                    f"[OpenAI Response] {json.dumps(openai_completion, ensure_ascii=False, indent=2)}"
                 )
-
-                # Log response details
-                if openai_completion.get("choices"):
-                    choice = openai_completion["choices"][0]
-                    message = choice.get("message", {})
-                    finish_reason = choice.get("finish_reason")
-                    content_preview = (
-                        message.get("content", "")[:100]
-                        if message.get("content")
-                        else ""
-                    )
-                    tool_calls_count = (
-                        len(message.get("tool_calls", []))
-                        if message.get("tool_calls")
-                        else 0
-                    )
-                    logger.info(
-                        f"[OpenAI Response Details] finish_reason={finish_reason}, "
-                        f"content_length={len(message.get('content', ''))}, "
-                        f"tool_calls={tool_calls_count}, "
-                        f"content_preview={content_preview[:50]!r}"
-                    )
 
                 from openai.types.chat import ChatCompletion
 
@@ -914,26 +1074,12 @@ async def create_message(
                 anthropic_message = convert_openai_to_anthropic(completion, model)
 
                 anthropic_response = anthropic_message.model_dump()
-                # Log converted Anthropic response
-                logger.info(
-                    f"[Anthropic Converted Response] {json.dumps(anthropic_response, ensure_ascii=False, indent=2)[:2000]}"
+                anthropic_response["usage"] = _normalize_usage(
+                    anthropic_response.get("usage")
                 )
-
-                # Log Anthropic response details
-                content_blocks = anthropic_response.get("content", [])
-                stop_reason = anthropic_response.get("stop_reason")
-                usage = anthropic_response.get("usage", {})
-                logger.info(
-                    f"[Anthropic Response Details] stop_reason={stop_reason}, "
-                    f"content_blocks={len(content_blocks)}, "
-                    f"input_tokens={usage.get('input_tokens')}, "
-                    f"output_tokens={usage.get('output_tokens')}"
+                logger.debug(
+                    f"[Anthropic Response] {json.dumps(anthropic_response, ensure_ascii=False, indent=2)}"
                 )
-
-                # Log content block types
-                if content_blocks:
-                    block_types = [block.get("type") for block in content_blocks]
-                    logger.info(f"[Anthropic Content Blocks] types={block_types}")
 
                 return JSONResponse(content=anthropic_response)
 
@@ -943,17 +1089,17 @@ async def create_message(
                         type="timeout_error", message="Request timed out"
                     )
                 )
-                raise HTTPException(
+                return JSONResponse(
                     status_code=HTTPStatus.GATEWAY_TIMEOUT,
-                    detail=error_response.model_dump(),
+                    content=error_response.model_dump(),
                 )
             except httpx.RequestError as e:
                 error_response = AnthropicErrorResponse(
                     error=AnthropicError(type="connection_error", message=str(e))
                 )
-                raise HTTPException(
+                return JSONResponse(
                     status_code=HTTPStatus.BAD_GATEWAY,
-                    detail=error_response.model_dump(),
+                    content=error_response.model_dump(),
                 )
 
 
@@ -1007,7 +1153,7 @@ async def count_tokens(
                 type="invalid_request_error", message=f"Invalid JSON: {e}"
             )
         )
-        return JSONResponse(status_code=422, content=error_response.model_dump())
+        return JSONResponse(status_code=400, content=error_response.model_dump())
     except Exception as e:
         error_response = AnthropicErrorResponse(
             error=AnthropicError(type="invalid_request_error", message=str(e))
@@ -1022,7 +1168,7 @@ async def count_tokens(
                 message="Request body must be a JSON object",
             )
         )
-        return JSONResponse(status_code=422, content=error_response.model_dump())
+        return JSONResponse(status_code=400, content=error_response.model_dump())
 
     messages = body_json.get("messages", [])
     if not isinstance(messages, list):
@@ -1031,7 +1177,7 @@ async def count_tokens(
                 type="invalid_request_error", message="messages must be a list"
             )
         )
-        return JSONResponse(status_code=422, content=error_response.model_dump())
+        return JSONResponse(status_code=400, content=error_response.model_dump())
 
     model = body_json.get("model", "")
     system = body_json.get("system")
@@ -1039,7 +1185,7 @@ async def count_tokens(
 
     try:
         # Use tiktoken for token counting
-        import tiktoken
+        import tiktoken  # type: ignore[import-not-found]
 
         # Map model names to tiktoken encoding
         # Claude models don't have direct tiktoken encodings, so we use cl100k_base as approximation
