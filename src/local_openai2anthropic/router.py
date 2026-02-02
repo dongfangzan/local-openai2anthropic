@@ -179,6 +179,7 @@ async def _stream_response(
             output_tokens = 0
             message_id = None
             sent_message_delta = False
+            pending_text_prefix = ""
 
             async for line in response.aiter_lines():
                 if not line.startswith("data: "):
@@ -299,6 +300,7 @@ async def _stream_response(
                 # Handle reasoning content (thinking)
                 if delta.get("reasoning_content"):
                     reasoning = delta["reasoning_content"]
+                    pending_text_prefix = ""
                     # Start thinking content block if not already started
                     if not content_block_started or current_block_type != "thinking":
                         # Close previous block if exists
@@ -338,8 +340,16 @@ async def _stream_response(
                     continue
 
                 # Handle content
-                if delta.get("content"):
+                if isinstance(delta.get("content"), str):
+                    content_text = delta.get("content", "")
+                    if not content_text:
+                        continue
+                    if content_text.strip() == "(no content)":
+                        continue
                     if not content_block_started or current_block_type != "text":
+                        if not content_text.strip():
+                            pending_text_prefix += content_text
+                            continue
                         # Close previous block if exists
                         if content_block_started:
                             stop_block = {
@@ -363,16 +373,21 @@ async def _stream_response(
                         content_block_started = True
                         current_block_type = "text"
 
-                    output_tokens += _count_tokens(delta["content"])
+                    if pending_text_prefix:
+                        content_text = pending_text_prefix + content_text
+                        pending_text_prefix = ""
+
+                    output_tokens += _count_tokens(content_text)
                     delta_block = {
                         "type": "content_block_delta",
                         "index": content_block_index,
-                        "delta": {"type": "text_delta", "text": delta["content"]},
+                        "delta": {"type": "text_delta", "text": content_text},
                     }
                     yield f"event: content_block_delta\ndata: {json.dumps(delta_block)}\n\n"
 
                 # Handle tool calls
                 if delta.get("tool_calls"):
+                    pending_text_prefix = ""
                     for tool_call in delta["tool_calls"]:
                         tool_call_idx = tool_call.get("index", 0)
 

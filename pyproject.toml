@@ -1,6 +1,6 @@
 [project]
 name = "local-openai2anthropic"
-version = "0.3.3"
+version = "0.3.4"
 description = "A lightweight proxy server that converts Anthropic Messages API to OpenAI API"
 readme = "README.md"
 license = { text = "Apache-2.0" }
