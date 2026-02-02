@@ -92,7 +92,9 @@ def convert_anthropic_to_openai(
             converted_messages = _convert_anthropic_message_to_openai(msg)
             openai_messages.extend(converted_messages)
             msg_count += 1
-    logger.debug(f"Converted {msg_count} messages, total OpenAI messages: {len(openai_messages)}")
+    logger.debug(
+        f"Converted {msg_count} messages, total OpenAI messages: {len(openai_messages)}"
+    )
 
     # Build OpenAI params
     params: dict[str, Any] = {
@@ -139,17 +141,21 @@ def convert_anthropic_to_openai(
             openai_tools.append(openai_tool)
 
         # Add server tools as OpenAI function tools
-        for tool_class in (enabled_server_tools or []):
+        for tool_class in enabled_server_tools or []:
             if tool_class.tool_type in server_tools_config:
                 config = server_tools_config[tool_class.tool_type]
                 openai_tools.append(tool_class.to_openai_tool(config))
 
         if openai_tools:
             params["tools"] = openai_tools
-        
+
         # Convert tool_choice
         if tool_choice:
-            tc = tool_choice if isinstance(tool_choice, dict) else tool_choice.model_dump()
+            tc = (
+                tool_choice
+                if isinstance(tool_choice, dict)
+                else tool_choice.model_dump()
+            )
             tc_type = tc.get("type")
             if tc_type == "auto":
                 params["tool_choice"] = "auto"
@@ -162,7 +168,7 @@ def convert_anthropic_to_openai(
                 }
         else:
             params["tool_choice"] = "auto"
-    
+
     # Handle thinking parameter
     # vLLM/SGLang use chat_template_kwargs.thinking to toggle thinking mode
     # Some models use "thinking", others use "enable_thinking", so we include both
@@ -181,7 +187,7 @@ def convert_anthropic_to_openai(
                 logger.debug(
                     "thinking.budget_tokens (%s) is accepted but not supported by "
                     "vLLM/SGLang. Using default thinking configuration.",
-                    budget_tokens
+                    budget_tokens,
                 )
         else:
             # Default to disabled thinking mode if not explicitly enabled
@@ -208,32 +214,32 @@ def _convert_anthropic_message_to_openai(
 ) -> list[dict[str, Any]]:
     """
     Convert a single Anthropic message to OpenAI format.
-    
-    Returns a list of messages because tool_results need to be 
+
+    Returns a list of messages because tool_results need to be
     separate tool messages in OpenAI format.
     """
     role = msg.get("role", "user")
     content = msg.get("content", "")
-    
+
     if isinstance(content, str):
         return [{"role": role, "content": content}]
-    
+
     # Handle list of content blocks
     openai_content: list[dict[str, Any]] = []
     tool_calls: list[dict[str, Any]] = []
     tool_call_results: list[dict[str, Any]] = []
-    
+
     for block in content:
         if isinstance(block, str):
             openai_content.append({"type": "text", "text": block})
             continue
-            
+
         block_type = block.get("type") if isinstance(block, dict) else block.type
-        
+
         if block_type == "text":
             text = block.get("text") if isinstance(block, dict) else block.text
             openai_content.append({"type": "text", "text": text})
-            
+
         elif block_type == "image":
             # Convert image to image_url format
             source = block.get("source") if isinstance(block, dict) else block.source
@@ -246,11 +252,13 @@ def _convert_anthropic_message_to_openai(
                     data = source.data
                 # Build data URL
                 url = f"data:{media_type};base64,{data}"
-                openai_content.append({
-                    "type": "image_url",
-                    "image_url": {"url": url},
-                })
-                
+                openai_content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": url},
+                    }
+                )
+
         elif block_type == "tool_use":
             # Convert to function call
             if isinstance(block, dict):
@@ -261,16 +269,20 @@ def _convert_anthropic_message_to_openai(
                 tool_id = block.id
                 name = block.name
                 input_data = block.input
-                
-            tool_calls.append({
-                "id": tool_id,
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "arguments": json.dumps(input_data) if isinstance(input_data, dict) else str(input_data),
-                },
-            })
-            
+
+            tool_calls.append(
+                {
+                    "id": tool_id,
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": json.dumps(input_data)
+                        if isinstance(input_data, dict)
+                        else str(input_data),
+                    },
+                }
+            )
+
         elif block_type == "tool_result":
             # Tool results need to be separate tool messages
             if isinstance(block, dict):
@@ -281,7 +293,7 @@ def _convert_anthropic_message_to_openai(
                 tool_use_id = block.tool_use_id
                 result_content = block.content
                 is_error = getattr(block, "is_error", False)
-                
+
             # Handle content that might be a list or string
             if isinstance(result_content, list):
                 # Extract text from content blocks
@@ -298,7 +310,7 @@ def _convert_anthropic_message_to_openai(
                 result_text = "\n".join(text_parts)
             else:
                 result_text = str(result_content)
-                
+
             tool_msg: dict[str, Any] = {
                 "role": "tool",
                 "tool_call_id": tool_use_id,
@@ -306,28 +318,28 @@ def _convert_anthropic_message_to_openai(
             }
             # Note: is_error is not directly supported in OpenAI API
             # but we could add it to content if needed
-            
+
             tool_call_results.append(tool_msg)
-    
+
     # Build primary message
     messages: list[dict[str, Any]] = []
     # SGLang requires content field to be present, default to empty string
     primary_msg: dict[str, Any] = {"role": role, "content": ""}
-    
+
     if openai_content:
         if len(openai_content) == 1 and openai_content[0]["type"] == "text":
             primary_msg["content"] = openai_content[0]["text"]
         else:
             primary_msg["content"] = openai_content
-    
+
     if tool_calls:
         primary_msg["tool_calls"] = tool_calls
-    
+
     messages.append(primary_msg)
-    
+
     # Add tool result messages separately
     messages.extend(tool_call_results)
-        
+
     return messages
 
 
@@ -353,24 +365,24 @@ def convert_openai_to_anthropic(
 ) -> Message:
     """
     Convert OpenAI ChatCompletion to Anthropic Message.
-    
+
     Args:
         completion: OpenAI chat completion response
         model: Model name
-        
+
     Returns:
         Anthropic Message response
     """
     from anthropic.types.beta import BetaThinkingBlock
-    
+
     choice = completion.choices[0]
     message = choice.message
-    
+
     # Convert content blocks
     content: list[ContentBlock] = []
-    
+
     # Add reasoning content (thinking) first if present
-    reasoning_content = getattr(message, 'reasoning_content', None)
+    reasoning_content = getattr(message, "reasoning_content", None)
     if reasoning_content:
         content.append(
             BetaThinkingBlock(
@@ -379,7 +391,7 @@ def convert_openai_to_anthropic(
                 signature="",  # Signature not available from OpenAI format
             )
         )
-    
+
     # Add text content if present
     if message.content:
         if isinstance(message.content, str):
@@ -388,7 +400,7 @@ def convert_openai_to_anthropic(
             for part in message.content:
                 if part.type == "text":
                     content.append(TextBlock(type="text", text=part.text))
-    
+
     # Convert tool calls
     if message.tool_calls:
         for tc in message.tool_calls:
@@ -397,7 +409,7 @@ def convert_openai_to_anthropic(
                 tool_input = json.loads(tc.function.arguments)
             except json.JSONDecodeError:
                 tool_input = {"raw": tc.function.arguments}
-                
+
             content.append(
                 ToolUseBlock(
                     type="tool_use",
@@ -406,7 +418,7 @@ def convert_openai_to_anthropic(
                     input=tool_input,
                 )
             )
-    
+
     # Determine stop reason
     stop_reason_map = {
         "stop": "end_turn",
@@ -414,18 +426,24 @@ def convert_openai_to_anthropic(
         "tool_calls": "tool_use",
         "content_filter": "end_turn",
     }
-    anthropic_stop_reason = stop_reason_map.get(choice.finish_reason or "stop", "end_turn")
-    
+    anthropic_stop_reason = stop_reason_map.get(
+        choice.finish_reason or "stop", "end_turn"
+    )
+
     # Build usage dict with cache support (if available from upstream)
     usage_dict = None
     if completion.usage:
         usage_dict = {
             "input_tokens": completion.usage.prompt_tokens,
             "output_tokens": completion.usage.completion_tokens,
-            "cache_creation_input_tokens": getattr(completion.usage, "cache_creation_input_tokens", None),
-            "cache_read_input_tokens": getattr(completion.usage, "cache_read_input_tokens", None),
+            "cache_creation_input_tokens": getattr(
+                completion.usage, "cache_creation_input_tokens", None
+            ),
+            "cache_read_input_tokens": getattr(
+                completion.usage, "cache_read_input_tokens", None
+            ),
         }
-    
+
     # Build message dict to avoid Pydantic validation issues
     message_dict = {
         "id": completion.id,
@@ -437,5 +455,5 @@ def convert_openai_to_anthropic(
         "stop_sequence": None,
         "usage": usage_dict,
     }
-    
+
     return Message.model_validate(message_dict)
