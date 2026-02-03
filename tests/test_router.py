@@ -2,8 +2,6 @@
 Integration tests for the FastAPI router.
 """
 
-import json
-
 import pytest
 from fastapi.testclient import TestClient
 from fastapi.responses import JSONResponse

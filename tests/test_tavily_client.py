@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 
 from local_openai2anthropic.tavily_client import TavilyClient
-from local_openai2anthropic.protocol import WebSearchResult
 
 
 class TestTavilyClient:

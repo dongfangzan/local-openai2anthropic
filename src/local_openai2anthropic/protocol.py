@@ -6,7 +6,7 @@ Uses Anthropic SDK types for request/response models.
 
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 # Re-export all Anthropic types for convenience
 from anthropic.types import (

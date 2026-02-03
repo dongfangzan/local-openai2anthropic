@@ -3,7 +3,7 @@ Tests for the main module.
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 from fastapi import HTTPException
 

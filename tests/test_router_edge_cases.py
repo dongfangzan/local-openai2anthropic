@@ -2,10 +2,8 @@
 Additional tests for the router module covering edge cases.
 """
 
-import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-import httpx
+from unittest.mock import MagicMock, patch
 
 from local_openai2anthropic.router import (
     _generate_server_tool_id,

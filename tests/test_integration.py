@@ -14,7 +14,6 @@ Mark as skip by default to avoid accidental runs.
 """
 
 import os
-import sys
 
 import pytest
 

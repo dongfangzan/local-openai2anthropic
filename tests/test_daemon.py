@@ -3,9 +3,7 @@ Tests for the daemon module.
 """
 
 import json
-import os
 import signal
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open
 
@@ -296,7 +294,7 @@ class TestShowLogs:
         log_content = "line1\nline2\nline3\nline4\nline5\n"
         with patch.object(Path, "exists", return_value=True):
             with patch("builtins.open", mock_open(read_data=log_content)):
-                with patch("builtins.print") as mock_print:
+                with patch("builtins.print"):
                     result = daemon.show_logs(lines=2)
                     assert result is True
 

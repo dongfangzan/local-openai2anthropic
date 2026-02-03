@@ -17,13 +17,11 @@ from anthropic.types import (
 from anthropic.types.message_create_params import MessageCreateParams
 from openai.types.chat import (
     ChatCompletion,
-    ChatCompletionChunk,
     ChatCompletionToolParam,
 )
 from openai.types.chat.completion_create_params import CompletionCreateParams
 
 from local_openai2anthropic.protocol import UsageWithCache
-from local_openai2anthropic.server_tools import ServerToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -290,11 +288,11 @@ def _convert_anthropic_message_to_openai(
             if isinstance(block, dict):
                 tool_use_id = block.get("tool_use_id", "")
                 result_content = block.get("content", "")
-                is_error = block.get("is_error", False)
+                # Note: is_error is not directly supported in OpenAI API
             else:
                 tool_use_id = block.tool_use_id
                 result_content = block.content
-                is_error = getattr(block, "is_error", False)
+                # Note: is_error is not directly supported in OpenAI API
 
             # Handle content that might be a list or string
             if isinstance(result_content, list):
