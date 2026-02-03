@@ -73,14 +73,36 @@ Examples:
 
 > **Note:** If you're using [Ollama](https://ollama.com), it natively supports the Anthropic API format, so you don't need this proxy. Just point your Claude SDK directly to `http://localhost:11434/v1`.
 
-### 3. Start the Proxy
+### 3. Configure the Proxy
+
+On first run, an interactive setup wizard will guide you through creating the configuration file at `~/.oa2a/config.toml`:
+
+```bash
+oa2a
+# Interactive setup wizard starts:
+# - Enter your OpenAI API Key (for the local LLM backend)
+# - Enter the base URL of your local LLM (e.g., http://localhost:8000/v1)
+# - Configure server host and port (optional)
+# - Set server API key for authentication (optional)
+```
+
+**Manual Configuration**
+
+You can also manually edit the config file at `~/.oa2a/config.toml`:
+
+```toml
+# OA2A Configuration File
+openai_api_key = "dummy"
+openai_base_url = "http://localhost:8000/v1"
+host = "0.0.0.0"
+port = 8080
+```
+
+### 4. Start the Proxy
 
 **Option A: Run in background (recommended)**
 
 ```bash
-export OA2A_OPENAI_BASE_URL=http://localhost:8000/v1  # Your local LLM endpoint
-export OA2A_OPENAI_API_KEY=dummy  # Any value, not used by local backends
-
 oa2a start              # Start server in background
 # Server starts at http://localhost:8080
 
@@ -101,9 +123,6 @@ oa2a restart            # Restart with same settings
 **Option B: Run in foreground**
 
 ```bash
-export OA2A_OPENAI_BASE_URL=http://localhost:8000/v1
-export OA2A_OPENAI_API_KEY=dummy
-
 oa2a                    # Run server in foreground (blocking)
 # Press Ctrl+C to stop
 ```
@@ -177,13 +196,23 @@ Terminal 1 - Start your local LLM:
 vllm serve meta-llama/Llama-2-7b-chat-hf
 ```
 
-Terminal 2 - Start the proxy (background mode):
+Terminal 2 - Configure and start the proxy (background mode):
 ```bash
-export OA2A_OPENAI_BASE_URL=http://localhost:8000/v1
-export OA2A_OPENAI_API_KEY=dummy
-export OA2A_TAVILY_API_KEY="tvly-your-tavily-api-key"  # Optional: enable web search
+# First run: interactive setup (creates ~/.oa2a/config.toml)
+# Or manually edit: ~/.oa2a/config.toml
 
 oa2a start
+```
+
+**Example config file** (`~/.oa2a/config.toml`):
+```toml
+openai_api_key = "dummy"
+openai_base_url = "http://localhost:8000/v1"
+host = "0.0.0.0"
+port = 8080
+
+# Optional: Enable web search
+tavily_api_key = "tvly-your-tavily-api-key"
 ```
 
 Terminal 3 - Launch Claude Code:
@@ -294,13 +323,19 @@ if message.stop_reason == "tool_use":
 
 ## Configuration
 
-| Variable | Required | Default | Description |
+Configuration is stored in `~/.oa2a/config.toml` (created automatically on first run).
+
+| Option | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `OA2A_OPENAI_BASE_URL` | ✅ | - | Your local LLM's OpenAI-compatible endpoint |
-| `OA2A_OPENAI_API_KEY` | ✅ | - | Any value (local backends usually ignore this) |
-| `OA2A_PORT` | ❌ | 8080 | Proxy server port |
-| `OA2A_HOST` | ❌ | 0.0.0.0 | Proxy server host |
-| `OA2A_TAVILY_API_KEY` | ❌ | - | Enable web search ([tavily.com](https://tavily.com)) |
+| `openai_base_url` | ✅ | - | Your local LLM's OpenAI-compatible endpoint |
+| `openai_api_key` | ✅ | - | API key for the local LLM backend |
+| `port` | ❌ | 8080 | Proxy server port |
+| `host` | ❌ | 0.0.0.0 | Proxy server host |
+| `api_key` | ❌ | - | API key for authenticating requests to this proxy |
+| `tavily_api_key` | ❌ | - | Enable web search ([tavily.com](https://tavily.com)) |
+| `log_level` | ❌ | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
+
+**First-time Setup**: Run `oa2a` without config file to launch the interactive setup wizard.
 
 ---
 

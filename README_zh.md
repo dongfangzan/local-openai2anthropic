@@ -73,14 +73,36 @@ sglang launch --model-path meta-llama/Llama-2-7b-chat-hf --port 8000
 
 > **注意：** 如果你使用 [Ollama](https://ollama.com)，它原生支持 Anthropic API 格式，无需使用本代理工具。直接将 Claude SDK 指向 `http://localhost:11434/v1` 即可。
 
-### 3. 启动代理
+### 3. 配置代理
+
+首次运行时，交互式配置向导会引导你创建配置文件 `~/.oa2a/config.toml`：
+
+```bash
+oa2a
+# 交互式配置向导启动：
+# - 输入 OpenAI API Key（用于本地 LLM 后端）
+# - 输入本地 LLM 的 base URL（如 http://localhost:8000/v1）
+# - 配置服务器 host 和 port（可选）
+# - 设置代理 API 认证密钥（可选）
+```
+
+**手动配置**
+
+你也可以直接编辑配置文件 `~/.oa2a/config.toml`：
+
+```toml
+# OA2A 配置文件
+openai_api_key = "dummy"
+openai_base_url = "http://localhost:8000/v1"
+host = "0.0.0.0"
+port = 8080
+```
+
+### 4. 启动代理
 
 **方式 A: 后台运行（推荐）**
 
 ```bash
-export OA2A_OPENAI_BASE_URL=http://localhost:8000/v1  # 你的本地模型端点
-export OA2A_OPENAI_API_KEY=dummy  # 任意值，本地后端通常忽略
-
 oa2a start              # 后台启动服务
 # 代理在 http://localhost:8080 启动
 
@@ -101,9 +123,6 @@ oa2a restart            # 使用相同配置重启
 **方式 B: 前台运行**
 
 ```bash
-export OA2A_OPENAI_BASE_URL=http://localhost:8000/v1
-export OA2A_OPENAI_API_KEY=dummy
-
 oa2a                    # 前台运行服务（阻塞模式）
 # 按 Ctrl+C 停止
 ```
@@ -177,13 +196,23 @@ claude
 vllm serve meta-llama/Llama-2-7b-chat-hf
 ```
 
-终端 2 - 启动代理（后台运行）：
+终端 2 - 配置并启动代理（后台运行）：
 ```bash
-export OA2A_OPENAI_BASE_URL=http://localhost:8000/v1
-export OA2A_OPENAI_API_KEY=dummy
-export OA2A_TAVILY_API_KEY="tvly-your-tavily-api-key"  # 可选：启用网页搜索
+# 首次运行：交互式配置（创建 ~/.oa2a/config.toml）
+# 或手动编辑：~/.oa2a/config.toml
 
 oa2a start
+```
+
+**配置文件示例** (`~/.oa2a/config.toml`)：
+```toml
+openai_api_key = "dummy"
+openai_base_url = "http://localhost:8000/v1"
+host = "0.0.0.0"
+port = 8080
+
+# 可选：启用网页搜索
+tavily_api_key = "tvly-your-tavily-api-key"
 ```
 
 终端 3 - 启动 Claude Code：
@@ -294,13 +323,19 @@ if message.stop_reason == "tool_use":
 
 ## 配置选项
 
-| 变量 | 必需 | 默认值 | 说明 |
+配置存储在 `~/.oa2a/config.toml`（首次运行时自动创建）。
+
+| 选项 | 必需 | 默认值 | 说明 |
 |----------|----------|---------|-------------|
-| `OA2A_OPENAI_BASE_URL` | ✅ | - | 本地模型的 OpenAI 兼容端点 |
-| `OA2A_OPENAI_API_KEY` | ✅ | - | 任意值（本地后端通常忽略） |
-| `OA2A_PORT` | ❌ | 8080 | 代理服务器端口 |
-| `OA2A_HOST` | ❌ | 0.0.0.0 | 代理服务器主机 |
-| `OA2A_TAVILY_API_KEY` | ❌ | - | 启用网页搜索（[tavily.com](https://tavily.com)） |
+| `openai_base_url` | ✅ | - | 本地模型的 OpenAI 兼容端点 |
+| `openai_api_key` | ✅ | - | 本地 LLM 后端的 API 密钥 |
+| `port` | ❌ | 8080 | 代理服务器端口 |
+| `host` | ❌ | 0.0.0.0 | 代理服务器主机 |
+| `api_key` | ❌ | - | 访问本代理的认证密钥 |
+| `tavily_api_key` | ❌ | - | 启用网页搜索（[tavily.com](https://tavily.com)） |
+| `log_level` | ❌ | INFO | 日志级别（DEBUG、INFO、WARNING、ERROR） |
+
+**首次配置**：在没有配置文件的情况下运行 `oa2a` 可启动交互式配置向导。
 
 ---
 
