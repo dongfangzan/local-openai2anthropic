@@ -8,10 +8,13 @@ import pytest
 
 from local_openai2anthropic.config import (
     Settings,
+    create_config_from_dict,
     create_default_config,
     get_config_dir,
     get_config_file,
     get_settings,
+    interactive_setup,
+    is_interactive,
     load_config_from_file,
 )
 
@@ -358,6 +361,280 @@ class TestGetSettings:
         captured = capsys.readouterr()
         assert "Created default config file" in captured.out
         assert "Please edit it to add your API keys and settings" in captured.out
+
+
+class TestIsInteractive:
+    """Tests for is_interactive function."""
+
+    def test_is_interactive_returns_bool(self):
+        """Test that is_interactive returns a boolean."""
+        result = is_interactive()
+        assert isinstance(result, bool)
+
+
+class TestCreateConfigFromDict:
+    """Tests for create_config_from_dict function."""
+
+    def test_create_config_from_dict_basic(self, tmp_path, monkeypatch):
+        """Test creating config file from dictionary with basic values."""
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
+        config = {
+            "openai_api_key": "test-api-key",
+            "openai_base_url": "https://api.openai.com/v1",
+            "host": "0.0.0.0",
+            "port": 8080,
+        }
+
+        create_config_from_dict(config)
+
+        config_file = get_config_file()
+        assert config_file.exists()
+
+        content = config_file.read_text()
+        assert 'openai_api_key = "test-api-key"' in content
+        assert 'openai_base_url = "https://api.openai.com/v1"' in content
+        assert 'host = "0.0.0.0"' in content
+        assert "port = 8080" in content
+
+    def test_create_config_from_dict_with_optional_values(self, tmp_path, monkeypatch):
+        """Test creating config with optional values."""
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
+        config = {
+            "openai_api_key": "test-api-key",
+            "api_key": "server-api-key",
+        }
+
+        create_config_from_dict(config)
+
+        config_file = get_config_file()
+        content = config_file.read_text()
+
+        assert 'api_key = "server-api-key"' in content
+
+    def test_create_config_from_dict_without_optional_values(self, tmp_path, monkeypatch):
+        """Test creating config without optional values comments them out."""
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
+        config = {
+            "openai_api_key": "test-api-key",
+        }
+
+        create_config_from_dict(config)
+
+        config_file = get_config_file()
+        content = config_file.read_text()
+
+        # Optional api_key should be commented out
+        assert '# api_key = ""' in content
+
+    def test_create_config_from_dict_custom_host_port(self, tmp_path, monkeypatch):
+        """Test creating config with custom host and port."""
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
+        config = {
+            "openai_api_key": "test-key",
+            "host": "127.0.0.1",
+            "port": 9000,
+        }
+
+        create_config_from_dict(config)
+
+        config_file = get_config_file()
+        content = config_file.read_text()
+
+        assert 'host = "127.0.0.1"' in content
+        assert "port = 9000" in content
+
+    def test_create_config_from_dict_creates_directory(self, tmp_path, monkeypatch):
+        """Test that create_config_from_dict creates the config directory."""
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
+        config_dir = tmp_path / ".oa2a"
+        assert not config_dir.exists()
+
+        create_config_from_dict({"openai_api_key": "test"})
+
+        assert config_dir.exists()
+        assert config_dir.is_dir()
+
+    def test_create_config_file_permissions(self, tmp_path, monkeypatch):
+        """Test that created config file has correct permissions."""
+        import sys
+
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
+        create_config_from_dict({"openai_api_key": "test"})
+
+        if sys.platform != "win32":
+            import stat
+
+            config_file = get_config_file()
+            config_dir = get_config_dir()
+
+            file_perms = stat.S_IMODE(config_file.stat().st_mode)
+            dir_perms = stat.S_IMODE(config_dir.stat().st_mode)
+
+            assert file_perms == 0o600
+            assert dir_perms == 0o700
+
+
+class TestInteractiveSetup:
+    """Tests for interactive_setup function."""
+
+    def test_interactive_setup_all_values(self, monkeypatch):
+        """Test interactive setup with all values provided."""
+        # Mock get_config_file to return a fixed path
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_file",
+            lambda: Path("/tmp/.oa2a/config.toml"),
+        )
+
+        # Mock input for all inputs
+        inputs = iter(
+            [
+                "openai-api-key",  # api_key (required)
+                "https://custom.api.com",  # base_url
+                "127.0.0.1",  # host
+                "9000",  # port
+                "server-api-key",  # server api_key
+            ]
+        )
+        monkeypatch.setattr("builtins.input", lambda prompt: next(inputs))
+
+        config = interactive_setup()
+
+        assert config["openai_api_key"] == "openai-api-key"
+        assert config["openai_base_url"] == "https://custom.api.com"
+        assert config["host"] == "127.0.0.1"
+        assert config["port"] == 9000
+        assert config["api_key"] == "server-api-key"
+
+    def test_interactive_setup_defaults(self, monkeypatch):
+        """Test interactive setup with default values."""
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_file",
+            lambda: Path("/tmp/.oa2a/config.toml"),
+        )
+
+        # Mock input - api key + all empty to accept defaults
+        inputs = iter(["openai-api-key", "", "", "", ""])
+        monkeypatch.setattr("builtins.input", lambda prompt: next(inputs))
+
+        config = interactive_setup()
+
+        assert config["openai_api_key"] == "openai-api-key"
+        assert config["openai_base_url"] == "https://api.openai.com/v1"
+        assert config["host"] == "0.0.0.0"
+        assert config["port"] == 8080
+        assert "api_key" not in config
+
+    def test_interactive_setup_invalid_port(self, monkeypatch):
+        """Test interactive setup with invalid port falls back to default."""
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_file",
+            lambda: Path("/tmp/.oa2a/config.toml"),
+        )
+
+        # Mock input with invalid port
+        inputs = iter(["openai-api-key", "", "", "invalid", ""])
+        monkeypatch.setattr("builtins.input", lambda prompt: next(inputs))
+
+        config = interactive_setup()
+
+        assert config["port"] == 8080  # Should fall back to default
+
+    def test_interactive_setup_requires_api_key(self, monkeypatch):
+        """Test that interactive setup requires API key."""
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_file",
+            lambda: Path("/tmp/.oa2a/config.toml"),
+        )
+
+        # Mock input - first empty (rejected), then valid
+        inputs = iter(["", "openai-api-key", "", "", "", ""])
+        monkeypatch.setattr("builtins.input", lambda prompt: next(inputs))
+
+        config = interactive_setup()
+
+        assert config["openai_api_key"] == "openai-api-key"
+
+
+class TestGetSettingsInteractive:
+    """Tests for get_settings with interactive mode."""
+
+    def test_get_settings_non_interactive_creates_default(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Test get_settings in non-interactive mode creates default config."""
+        # Clear cache
+        get_settings.cache_clear()
+
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.is_interactive", lambda: False
+        )
+
+        settings = get_settings()
+
+        # Should create default config
+        assert get_config_file().exists()
+        assert isinstance(settings, Settings)
+
+        # Check notification
+        captured = capsys.readouterr()
+        assert "Created default config file" in captured.out
+
+    def test_get_settings_interactive_mode(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """Test get_settings in interactive mode runs setup wizard."""
+        # Clear cache
+        get_settings.cache_clear()
+
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.is_interactive", lambda: True
+        )
+
+        # Mock interactive_setup
+        mock_config = {
+            "openai_api_key": "test-key",
+            "host": "127.0.0.1",
+            "port": 9000,
+        }
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.interactive_setup", lambda: mock_config
+        )
+
+        settings = get_settings()
+
+        # Should create config with interactive values
+        assert get_config_file().exists()
+        assert settings.openai_api_key == "test-key"
+        assert settings.host == "127.0.0.1"
+        assert settings.port == 9000
+
+        # Check notification
+        captured = capsys.readouterr()
+        assert "Configuration saved to" in captured.out
 
 
 if __name__ == "__main__":

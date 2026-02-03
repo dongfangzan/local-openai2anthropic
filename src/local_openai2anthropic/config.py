@@ -88,6 +88,157 @@ websearch_max_uses = 5
     return True
 
 
+def interactive_setup() -> dict:
+    """Interactive configuration setup wizard.
+
+    Guides user through setting up essential configuration values.
+
+    Returns:
+        Dictionary containing user-provided configuration
+    """
+    print("=" * 60)
+    print("  Welcome to local-openai2anthropic Setup Wizard")
+    print("=" * 60)
+    print()
+    print("This wizard will help you create the initial configuration.")
+    print(f"Config file will be saved to: {get_config_file()}")
+    print()
+
+    config = {}
+
+    # OpenAI API Key (required)
+    print("[1/3] OpenAI API Configuration")
+    print("-" * 40)
+    while True:
+        api_key = input("Enter your OpenAI API Key (required): ").strip()
+        if api_key:
+            config["openai_api_key"] = api_key
+            break
+        print("API Key is required. Please enter a valid key.")
+
+    # Base URL (optional, with default)
+    default_url = "https://api.openai.com/v1"
+    base_url = input(f"Enter OpenAI Base URL [{default_url}]: ").strip()
+    config["openai_base_url"] = base_url if base_url else default_url
+
+    print()
+    print("[2/3] Server Configuration")
+    print("-" * 40)
+
+    # Host (with default)
+    default_host = "0.0.0.0"
+    host = input(f"Enter server host [{default_host}]: ").strip()
+    config["host"] = host if host else default_host
+
+    # Port (with default)
+    default_port = "8080"
+    port_input = input(f"Enter server port [{default_port}]: ").strip()
+    try:
+        config["port"] = int(port_input) if port_input else int(default_port)
+    except ValueError:
+        print(f"Invalid port number, using default: {default_port}")
+        config["port"] = int(default_port)
+
+    # API Key for server authentication (optional)
+    print()
+    print("[3/3] Server API Authentication (Optional)")
+    print("-" * 40)
+    print("Set an API key to authenticate requests to this server.")
+    print(
+        "Leave empty to allow unauthenticated access (not recommended for production)."
+    )
+    server_api_key = input("Enter server API key (optional): ").strip()
+    if server_api_key:
+        config["api_key"] = server_api_key
+
+    print()
+    print("=" * 60)
+    print("  Configuration Summary")
+    print("=" * 60)
+    print(f"OpenAI Base URL: {config.get('openai_base_url', default_url)}")
+    print(
+        f"Server: {config.get('host', default_host)}:{config.get('port', default_port)}"
+    )
+    print(f"OpenAI API Key: {config.get('openai_api_key', '')[:8]}... (configured)")
+    if config.get("api_key"):
+        print(f"Server Auth: {config['api_key'][:8]}... (configured)")
+    print()
+
+    return config
+
+
+def create_config_from_dict(config: dict) -> None:
+    """Create config file from dictionary.
+
+    Args:
+        config: Dictionary containing configuration values
+    """
+    config_file = get_config_file()
+    config_dir = get_config_dir()
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    # Set restrictive permissions for the config directory on Unix-like systems
+    if sys.platform != "win32":
+        config_dir.chmod(0o700)
+
+    # Generate TOML content
+    lines = ["# OA2A Configuration File", ""]
+
+    # OpenAI API Configuration
+    lines.append("# OpenAI API Configuration")
+    lines.append(f'openai_api_key = "{config.get("openai_api_key", "")}"')
+    lines.append(
+        f'openai_base_url = "{config.get("openai_base_url", "https://api.openai.com/v1")}"'
+    )
+    lines.append("")
+
+    # Server Configuration
+    lines.append("# Server Configuration")
+    lines.append(f'host = "{config.get("host", "0.0.0.0")}"')
+    lines.append(f'port = {config.get("port", 8080)}')
+    lines.append(f'request_timeout = {config.get("request_timeout", 300.0)}')
+    lines.append("")
+
+    # API Key for server authentication
+    lines.append("# API Key for authenticating requests to this server (optional)")
+    if config.get("api_key"):
+        lines.append(f'api_key = "{config["api_key"]}"')
+    else:
+        lines.append('# api_key = ""')
+    lines.append("")
+
+    # CORS settings
+    lines.append("# CORS settings")
+    lines.append('cors_origins = ["*"]')
+    lines.append("cors_credentials = true")
+    lines.append('cors_methods = ["*"]')
+    lines.append('cors_headers = ["*"]')
+    lines.append("")
+
+    # Logging
+    lines.append("# Logging")
+    lines.append('log_level = "INFO"')
+    lines.append('log_dir = ""  # Empty uses platform-specific default')
+    lines.append("")
+
+    # Tavily configuration
+    lines.append("# Tavily Web Search Configuration")
+    if config.get("tavily_api_key"):
+        lines.append(f'tavily_api_key = "{config["tavily_api_key"]}"')
+    else:
+        lines.append('# tavily_api_key = ""')
+    lines.append("tavily_timeout = 30.0")
+    lines.append("tavily_max_results = 5")
+    lines.append("websearch_max_uses = 5")
+
+    config_content = "\n".join(lines)
+    config_file.write_text(config_content, encoding="utf-8")
+
+    # Set restrictive permissions for the config file on Unix-like systems
+    if sys.platform != "win32":
+        config_file.chmod(0o600)
+
+
 def load_config_from_file() -> dict:
     """Load configuration from TOML file.
 
@@ -164,18 +315,36 @@ class Settings(BaseModel):
         return cls(**config_data)
 
 
+def is_interactive() -> bool:
+    """Check if running in an interactive terminal.
+
+    Returns:
+        True if stdin is a TTY (interactive), False otherwise
+    """
+    return sys.stdin.isatty()
+
+
 @lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance.
 
-    Creates default config file if it doesn't exist and notifies the user.
+    Creates config file interactively if it doesn't exist and running in a TTY.
+    Falls back to creating a default config file in non-interactive environments.
 
     Returns:
         Settings instance loaded from config file
     """
-    created = create_default_config()
-    if created:
-        config_file = get_config_file()
-        print(f"Created default config file: {config_file}")
-        print("Please edit it to add your API keys and settings.")
+    config_file = get_config_file()
+    if not config_file.exists():
+        if is_interactive():
+            # Interactive setup wizard
+            config = interactive_setup()
+            create_config_from_dict(config)
+            print(f"\nConfiguration saved to: {config_file}")
+            print("You can edit this file later to change settings.\n")
+        else:
+            # Non-interactive environment: create default config
+            create_default_config()
+            print(f"Created default config file: {config_file}")
+            print("Please edit it to add your API keys and settings.")
     return Settings.from_toml()
