@@ -173,6 +173,8 @@ def create_config_from_dict(config: dict) -> None:
     Args:
         config: Dictionary containing configuration values
     """
+    import tomli_w
+
     config_file = get_config_file()
     config_dir = get_config_dir()
     config_dir.mkdir(parents=True, exist_ok=True)
@@ -181,58 +183,36 @@ def create_config_from_dict(config: dict) -> None:
     if sys.platform != "win32":
         config_dir.chmod(0o700)
 
-    # Generate TOML content
-    lines = ["# OA2A Configuration File", ""]
+    # Build config dict with proper structure
+    toml_config: dict = {
+        "openai_api_key": config.get("openai_api_key", ""),
+        "openai_base_url": config.get(
+            "openai_base_url", "https://api.openai.com/v1"
+        ),
+        "host": config.get("host", "0.0.0.0"),
+        "port": config.get("port", 8080),
+        "request_timeout": config.get("request_timeout", 300.0),
+        "cors_origins": ["*"],
+        "cors_credentials": True,
+        "cors_methods": ["*"],
+        "cors_headers": ["*"],
+        "log_level": "INFO",
+        "log_dir": "",
+        "tavily_timeout": 30.0,
+        "tavily_max_results": 5,
+        "websearch_max_uses": 5,
+    }
 
-    # OpenAI API Configuration
-    lines.append("# OpenAI API Configuration")
-    lines.append(f'openai_api_key = "{config.get("openai_api_key", "")}"')
-    lines.append(
-        f'openai_base_url = "{config.get("openai_base_url", "https://api.openai.com/v1")}"'
-    )
-    lines.append("")
-
-    # Server Configuration
-    lines.append("# Server Configuration")
-    lines.append(f'host = "{config.get("host", "0.0.0.0")}"')
-    lines.append(f'port = {config.get("port", 8080)}')
-    lines.append(f'request_timeout = {config.get("request_timeout", 300.0)}')
-    lines.append("")
-
-    # API Key for server authentication
-    lines.append("# API Key for authenticating requests to this server (optional)")
+    # Add optional values only if present
     if config.get("api_key"):
-        lines.append(f'api_key = "{config["api_key"]}"')
-    else:
-        lines.append('# api_key = ""')
-    lines.append("")
+        toml_config["api_key"] = config["api_key"]
 
-    # CORS settings
-    lines.append("# CORS settings")
-    lines.append('cors_origins = ["*"]')
-    lines.append("cors_credentials = true")
-    lines.append('cors_methods = ["*"]')
-    lines.append('cors_headers = ["*"]')
-    lines.append("")
-
-    # Logging
-    lines.append("# Logging")
-    lines.append('log_level = "INFO"')
-    lines.append('log_dir = ""  # Empty uses platform-specific default')
-    lines.append("")
-
-    # Tavily configuration
-    lines.append("# Tavily Web Search Configuration")
     if config.get("tavily_api_key"):
-        lines.append(f'tavily_api_key = "{config["tavily_api_key"]}"')
-    else:
-        lines.append('# tavily_api_key = ""')
-    lines.append("tavily_timeout = 30.0")
-    lines.append("tavily_max_results = 5")
-    lines.append("websearch_max_uses = 5")
+        toml_config["tavily_api_key"] = config["tavily_api_key"]
 
-    config_content = "\n".join(lines)
-    config_file.write_text(config_content, encoding="utf-8")
+    # Write using proper TOML serialization (prevents injection attacks)
+    with open(config_file, "wb") as f:
+        tomli_w.dump(toml_config, f)
 
     # Set restrictive permissions for the config file on Unix-like systems
     if sys.platform != "win32":

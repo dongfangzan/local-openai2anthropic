@@ -418,7 +418,7 @@ class TestCreateConfigFromDict:
         assert 'api_key = "server-api-key"' in content
 
     def test_create_config_from_dict_without_optional_values(self, tmp_path, monkeypatch):
-        """Test creating config without optional values comments them out."""
+        """Test creating config without optional values omits them."""
         monkeypatch.setattr(
             "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
         )
@@ -432,8 +432,16 @@ class TestCreateConfigFromDict:
         config_file = get_config_file()
         content = config_file.read_text()
 
-        # Optional api_key should be commented out
-        assert '# api_key = ""' in content
+        # Parse TOML to verify structure
+        import tomllib
+
+        with open(config_file, "rb") as f:
+            parsed = tomllib.load(f)
+
+        # Optional api_key should not be present when not provided
+        assert "api_key" not in parsed
+        # But openai_api_key should be present
+        assert parsed["openai_api_key"] == "test-api-key"
 
     def test_create_config_from_dict_custom_host_port(self, tmp_path, monkeypatch):
         """Test creating config with custom host and port."""

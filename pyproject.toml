@@ -29,7 +29,7 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "anthropic>=0.30.0",
     "openai>=1.30.0",
-    "tomli>=2.0.0; python_version<'3.11'",
+    "tomli-w>=1.0.0",
 ]
 
 [project.optional-dependencies]
