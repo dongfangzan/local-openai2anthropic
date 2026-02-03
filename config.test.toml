@@ -1,0 +1,33 @@
+# OA2A Test Configuration File
+# Copy this file to config.local.toml and fill in your API keys
+# DO NOT commit files with real API keys
+
+# OpenAI API Configuration
+openai_api_key = "your-openai-api-key-here"
+openai_base_url = "https://ai-api.wchscu.cn/v1"
+openai_org_id = ""
+openai_project_id = ""
+
+# Server Configuration
+host = "127.0.0.1"
+port = 18080
+request_timeout = 300.0
+
+# API Key for authenticating requests to this server (optional)
+api_key = ""
+
+# CORS settings
+cors_origins = ["*"]
+cors_credentials = true
+cors_methods = ["*"]
+cors_headers = ["*"]
+
+# Logging
+log_level = "DEBUG"
+log_dir = ""
+
+# Tavily Web Search Configuration
+tavily_api_key = "your-tavily-api-key-here"
+tavily_timeout = 30.0
+tavily_max_results = 5
+websearch_max_uses = 5
