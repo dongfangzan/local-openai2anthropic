@@ -199,6 +199,7 @@ class TestWebSearchToolDefinition:
         assert tool.max_uses == 5
         assert tool.allowed_domains == ["example.com", "test.com"]
         assert tool.blocked_domains == ["blocked.com"]
+        assert tool.user_location is not None
         assert tool.user_location.city == "Tokyo"
 
 
@@ -256,7 +257,9 @@ class TestWebSearchToolResultError:
     def test_error_types(self):
         """Test different error types."""
         error_codes = [
+            "invalid_input",
             "max_uses_exceeded",
+            "query_too_long",
             "too_many_requests",
             "unavailable",
         ]
@@ -282,6 +285,7 @@ class TestWebSearchToolResult:
 
         assert result.type == "web_search_tool_result"
         assert result.tool_use_id == "tool_123"
+        assert isinstance(result.results, list)
         assert len(result.results) == 1
         assert result.results[0].url == "https://example.com"
 

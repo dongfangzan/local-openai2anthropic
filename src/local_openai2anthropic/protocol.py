@@ -41,7 +41,7 @@ from anthropic.types.message_create_params import MessageCreateParams
 
 class UsageWithCache(BaseModel):
     """Extended usage with cache token support."""
-    
+
     input_tokens: int
     output_tokens: int
     cache_creation_input_tokens: Optional[int] = None
@@ -50,14 +50,14 @@ class UsageWithCache(BaseModel):
 
 class AnthropicError(BaseModel):
     """Error structure for Anthropic API."""
-    
+
     type: str
     message: str
 
 
 class AnthropicErrorResponse(BaseModel):
     """Error response structure for Anthropic API."""
-    
+
     type: str = "error"
     error: AnthropicError
 
@@ -69,6 +69,7 @@ class PingEvent(BaseModel):
 
 
 # Web Search Tool Types
+
 
 class ApproximateLocation(BaseModel):
     """Approximate user location for web search."""
@@ -122,7 +123,13 @@ class WebSearchToolResultError(BaseModel):
     """Error content for web search tool result."""
 
     type: Literal["web_search_tool_result_error"] = "web_search_tool_result_error"
-    error_code: Literal["max_uses_exceeded", "too_many_requests", "unavailable"]
+    error_code: Literal[
+        "invalid_input",
+        "max_uses_exceeded",
+        "query_too_long",
+        "too_many_requests",
+        "unavailable",
+    ]
 
 
 class WebSearchToolResult(BaseModel):
@@ -131,6 +138,7 @@ class WebSearchToolResult(BaseModel):
     type: Literal["web_search_tool_result"] = "web_search_tool_result"
     tool_use_id: str
     results: list[WebSearchResult] | WebSearchToolResultError  # 'results' for client
+    content: list[WebSearchResult] | WebSearchToolResultError | None = None  # 'content' for compatibility
 
 
 class WebSearchCitation(BaseModel):
@@ -168,12 +176,10 @@ __all__ = [
     "TextBlockParam",
     "ToolUseBlockParam",
     "ToolResultBlockParam",
-
     # Message types
     "Message",
     "MessageParam",
     "MessageCreateParams",
-
     # Streaming events
     "MessageStreamEvent",
     "MessageStartEvent",
@@ -183,23 +189,18 @@ __all__ = [
     "ContentBlockDeltaEvent",
     "ContentBlockStopEvent",
     "PingEvent",
-
     # Delta types
     "TextDelta",
     "BetaThinkingDelta",
-
     # Usage
     "UsageWithCache",
     "UsageWithServerToolUse",
     "MessageDeltaUsage",
-
     # Config
     "BetaThinkingConfigParam",
-
     # Error
     "AnthropicError",
     "AnthropicErrorResponse",
-
     # Web Search Tool Types
     "ApproximateLocation",
     "WebSearchToolDefinition",

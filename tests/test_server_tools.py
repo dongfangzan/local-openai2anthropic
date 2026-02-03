@@ -319,6 +319,8 @@ class TestWebSearchServerTool:
         assert blocks[0]["id"] == "call_123"
         assert blocks[1]["type"] == "web_search_tool_result"
         assert blocks[1]["tool_use_id"] == "call_123"
+        assert "content" in blocks[1]
+        assert blocks[1]["content"] == blocks[1]["results"]
 
     def test_build_content_blocks_error(self):
         """Test building content blocks for error result."""
@@ -337,7 +339,9 @@ class TestWebSearchServerTool:
         assert len(blocks) == 2
         assert blocks[0]["type"] == "server_tool_use"
         assert blocks[1]["type"] == "web_search_tool_result"
-        assert "error_code" in blocks[1]["results"]
+        assert blocks[1]["results"]["type"] == "web_search_tool_result_error"
+        assert blocks[1]["results"]["error_code"] == "max_uses_exceeded"
+        assert blocks[1]["content"]["error_code"] == "max_uses_exceeded"
 
     def test_build_tool_result_message_success(self):
         """Test building tool result message for success."""

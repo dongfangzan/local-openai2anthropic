@@ -57,11 +57,15 @@ class TavilyClient:
 
         Returns:
             Tuple of (list of WebSearchResult, error_code or None).
-            Error codes: "max_uses_exceeded", "too_many_requests", "unavailable"
+            Error codes: "invalid_input", "query_too_long", "too_many_requests", "unavailable"
         """
         if not self._enabled:
             logger.warning("Tavily search called but API key not configured")
             return [], "unavailable"
+
+        if not query or not query.strip():
+            logger.warning("Tavily search called with empty query")
+            return [], "invalid_input"
 
         url = f"{self.base_url}/search"
         headers = {
@@ -80,12 +84,25 @@ class TavilyClient:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(url, headers=headers, json=payload)
 
+                if response.status_code == 400:
+                    logger.warning("Tavily invalid request")
+                    return [], "invalid_input"
+
+                if response.status_code == 413:
+                    logger.warning("Tavily query too long")
+                    return [], "query_too_long"
+
                 if response.status_code == 429:
                     logger.warning("Tavily rate limit exceeded")
                     return [], "too_many_requests"
 
                 if response.status_code >= 500:
                     logger.error(f"Tavily server error: {response.status_code}")
+                    return [], "unavailable"
+
+                # Only raise for status codes we haven't handled (e.g., 401, 403)
+                if response.status_code >= 400:
+                    logger.error(f"Tavily client error: {response.status_code}")
                     return [], "unavailable"
 
                 response.raise_for_status()
@@ -102,7 +119,9 @@ class TavilyClient:
                     )
                     results.append(result)
 
-                logger.debug(f"Tavily search returned {len(results)} results for query: {query[:50]}...")
+                logger.debug(
+                    f"Tavily search returned {len(results)} results for query: {query[:50]}..."
+                )
                 return results, None
 
         except httpx.TimeoutException:

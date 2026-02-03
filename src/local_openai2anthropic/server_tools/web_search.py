@@ -148,30 +148,39 @@ class WebSearchServerTool(ServerTool):
         blocks: list[dict[str, Any]] = []
 
         # 1. server_tool_use block - signals a server-side tool was invoked
-        blocks.append({
-            "type": "server_tool_use",
-            "id": call_id,
-            "name": cls.tool_name,
-            "input": call_args,
-        })
+        blocks.append(
+            {
+                "type": "server_tool_use",
+                "id": call_id,
+                "name": cls.tool_name,
+                "input": call_args,
+            }
+        )
 
         # 2. web_search_tool_result block - contains the search results
-        # Note: Claude Code client expects 'results' field (not 'content') for counting
+        # Provide both 'results' and 'content' for client compatibility.
         if result.success:
-            blocks.append({
-                "type": "web_search_tool_result",
-                "tool_use_id": call_id,
-                "results": result.content,
-            })
+            blocks.append(
+                {
+                    "type": "web_search_tool_result",
+                    "tool_use_id": call_id,
+                    "results": result.content,
+                    "content": result.content,
+                }
+            )
         else:
-            blocks.append({
-                "type": "web_search_tool_result",
-                "tool_use_id": call_id,
-                "results": {
-                    "type": "web_search_tool_result_error",
-                    "error_code": result.error_code,
-                },
-            })
+            error_payload = {
+                "type": "web_search_tool_result_error",
+                "error_code": result.error_code or "unavailable",
+            }
+            blocks.append(
+                {
+                    "type": "web_search_tool_result",
+                    "tool_use_id": call_id,
+                    "results": error_payload,
+                    "content": error_payload,
+                }
+            )
 
         return blocks
 
@@ -190,7 +199,7 @@ class WebSearchServerTool(ServerTool):
                     {
                         "url": item.get("url"),
                         "title": item.get("title"),
-                        "snippet": item.get("snippet"),
+                        "content": item.get("encrypted_content"),
                         "page_age": item.get("page_age"),
                     }
                     for item in result.content

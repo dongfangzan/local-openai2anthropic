@@ -19,7 +19,6 @@ def settings(monkeypatch):
     monkeypatch.delenv("OA2A_OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("OA2A_TAVILY_API_KEY", raising=False)
     return Settings(
-        _env_file=None,
         openai_api_key="test-key",
         openai_base_url="https://api.openai.com/v1",
         request_timeout=30.0,
@@ -86,7 +85,7 @@ def test_cors_headers(client):
             "Access-Control-Request-Method": "POST",
         },
     )
-    
+
     assert response.status_code == 200
     assert "access-control-allow-origin" in response.headers
 
@@ -141,6 +140,15 @@ async def test_stream_conversion_includes_web_search_blocks_and_usage():
                             "encrypted_content": "abc",
                         }
                     ],
+                    "content": [
+                        {
+                            "type": "web_search_result",
+                            "url": "https://example.com",
+                            "title": "Example",
+                            "page_age": None,
+                            "encrypted_content": "abc",
+                        }
+                    ],
                 },
                 {"type": "text", "text": "ok"},
             ],
@@ -163,6 +171,49 @@ async def test_stream_conversion_includes_web_search_blocks_and_usage():
     assert '"type": "web_search_tool_result"' in stream_text
     assert '"server_tool_use"' in stream_text
     assert '"web_search_requests": 1' in stream_text
+
+
+@pytest.mark.asyncio
+async def test_stream_conversion_includes_web_search_error_result():
+    """Ensure streaming conversion keeps web_search error blocks."""
+    result = JSONResponse(
+        content={
+            "id": "msg_test",
+            "model": "test-model",
+            "role": "assistant",
+            "stop_reason": "end_turn",
+            "stop_sequence": None,
+            "content": [
+                {
+                    "type": "web_search_tool_result",
+                    "tool_use_id": "srvtoolu_test",
+                    "results": {
+                        "type": "web_search_tool_result_error",
+                        "error_code": "max_uses_exceeded",
+                    },
+                    "content": {
+                        "type": "web_search_tool_result_error",
+                        "error_code": "max_uses_exceeded",
+                    },
+                },
+            ],
+            "usage": {
+                "input_tokens": 1,
+                "output_tokens": 2,
+                "cache_creation_input_tokens": None,
+                "cache_read_input_tokens": None,
+                "server_tool_use": {"web_search_requests": 1},
+            },
+        }
+    )
+
+    chunks: list[str] = []
+    async for chunk in _convert_result_to_stream(result, "test-model"):
+        chunks.append(chunk)
+
+    stream_text = "".join(chunks)
+    assert '"type": "web_search_tool_result"' in stream_text
+    assert '"web_search_tool_result_error"' in stream_text
 
 
 if __name__ == "__main__":

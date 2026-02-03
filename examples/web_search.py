@@ -29,19 +29,14 @@ client = anthropic.Anthropic(
 response = client.messages.create(
     model="gpt-4o",  # Replace with your OpenAI model
     max_tokens=1024,
-    messages=[
-        {
-            "role": "user",
-            "content": "What is the latest news about Claude?"
-        }
-    ],
+    messages=[{"role": "user", "content": "What is the latest news about Claude?"}],
     tools=[
         {
             "type": "web_search_20250305",
             "name": "web_search",
             "max_uses": 3,
         }
-    ]
+    ],
 )
 
 print("Response:")
@@ -52,6 +47,9 @@ for block in response.content:
     elif block.type == "server_tool_use":
         print(f"  Server Tool Use: {block.name} - {block.input}")
     elif block.type == "web_search_tool_result":
-        print(f"  Web Search Results: {len(block.content)} results")
+        results = (
+            getattr(block, "results", None) or getattr(block, "content", None) or []
+        )
+        print(f"  Web Search Results: {len(results)} results")
 
 print(f"\nUsage: {response.usage}")

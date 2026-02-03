@@ -66,6 +66,17 @@ class TestTavilyClient:
         assert error == "unavailable"
 
     @pytest.mark.asyncio
+    async def test_search_empty_query(self):
+        """Test search with empty query."""
+        client = TavilyClient(api_key="tvly-test")
+
+        # Empty query should be handled locally without making HTTP request
+        results, error = await client.search("   ")
+
+        assert results == []
+        assert error == "invalid_input"
+
+    @pytest.mark.asyncio
     async def test_search_success(self):
         """Test successful search."""
         client = TavilyClient(api_key="tvly-test")
@@ -116,6 +127,44 @@ class TestTavilyClient:
         assert results == []
 
     @pytest.mark.asyncio
+    async def test_search_invalid_input(self):
+        """Test search with invalid input error."""
+        client = TavilyClient(api_key="tvly-test")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 400
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            results, error = await client.search("bad query")
+
+        assert error == "invalid_input"
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_search_query_too_long(self):
+        """Test search with query too long error."""
+        client = TavilyClient(api_key="tvly-test")
+
+        mock_response = MagicMock()
+        mock_response.status_code = 413
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_client.post = AsyncMock(return_value=mock_response)
+
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            results, error = await client.search("a" * 10000)
+
+        assert error == "query_too_long"
+        assert results == []
+
+    @pytest.mark.asyncio
     async def test_search_server_error(self):
         """Test search with server error."""
         client = TavilyClient(api_key="tvly-test")
@@ -158,7 +207,9 @@ class TestTavilyClient:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=None)
-        mock_client.post = AsyncMock(side_effect=httpx.RequestError("Connection failed"))
+        mock_client.post = AsyncMock(
+            side_effect=httpx.RequestError("Connection failed")
+        )
 
         with patch("httpx.AsyncClient", return_value=mock_client):
             results, error = await client.search("test query")

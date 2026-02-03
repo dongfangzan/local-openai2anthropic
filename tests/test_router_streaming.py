@@ -47,17 +47,21 @@ class TestStreamResponse:
         """Test successful streaming response."""
         mock_response = MagicMock()
         mock_response.status_code = 200
+
         # Use a real async generator function for aiter_lines
         async def aiter_lines():
             for line in [
                 'data: {"id": "msg_123", "choices": [{"delta": {"content": "Hello"}}]}',
-                'data: [DONE]',
+                "data: [DONE]",
             ]:
                 yield line
+
         mock_response.aiter_lines = aiter_lines
 
         mock_client = MagicMock()
-        mock_client.stream = MagicMock(return_value=async_context_manager(mock_response))
+        mock_client.stream = MagicMock(
+            return_value=async_context_manager(mock_response)
+        )
 
         chunks = []
         async for chunk in _stream_response(
@@ -70,18 +74,22 @@ class TestStreamResponse:
             chunks.append(chunk)
 
         assert len(chunks) > 0
-        assert any('message_start' in chunk for chunk in chunks)
+        assert any("message_start" in chunk for chunk in chunks)
 
     @pytest.mark.asyncio
     async def test_stream_error_response(self):
         """Test streaming with error response."""
         mock_response = MagicMock()
         mock_response.status_code = 400
-        mock_response.aread = AsyncMock(return_value=b'{"error": {"message": "Bad request"}}')
+        mock_response.aread = AsyncMock(
+            return_value=b'{"error": {"message": "Bad request"}}'
+        )
         mock_response.reason_phrase = "Bad Request"
 
         mock_client = MagicMock()
-        mock_client.stream = MagicMock(return_value=async_context_manager(mock_response))
+        mock_client.stream = MagicMock(
+            return_value=async_context_manager(mock_response)
+        )
 
         chunks = []
         async for chunk in _stream_response(
@@ -93,8 +101,8 @@ class TestStreamResponse:
         ):
             chunks.append(chunk)
 
-        assert any('error' in chunk for chunk in chunks)
-        assert any('[DONE]' in chunk for chunk in chunks)
+        assert any("error" in chunk for chunk in chunks)
+        assert any("[DONE]" in chunk for chunk in chunks)
 
     @pytest.mark.asyncio
     async def test_stream_with_reasoning_content(self):
@@ -106,13 +114,16 @@ class TestStreamResponse:
             for line in [
                 'data: {"id": "msg_123", "choices": [{"delta": {"reasoning_content": "Let me think..."}}]}',
                 'data: {"id": "msg_123", "choices": [{"delta": {"content": "Answer"}}]}',
-                'data: [DONE]',
+                "data: [DONE]",
             ]:
                 yield line
+
         mock_response.aiter_lines = aiter_lines
 
         mock_client = MagicMock()
-        mock_client.stream = MagicMock(return_value=async_context_manager(mock_response))
+        mock_client.stream = MagicMock(
+            return_value=async_context_manager(mock_response)
+        )
 
         chunks = []
         async for chunk in _stream_response(
@@ -124,10 +135,10 @@ class TestStreamResponse:
         ):
             chunks.append(chunk)
 
-        stream_text = ''.join(chunks)
+        stream_text = "".join(chunks)
         # The reasoning_content should produce "thinking" blocks
         # or the regular content should be present
-        assert 'thinking' in stream_text or 'Answer' in stream_text
+        assert "thinking" in stream_text or "Answer" in stream_text
 
     @pytest.mark.asyncio
     async def test_stream_with_tool_calls(self):
@@ -139,13 +150,16 @@ class TestStreamResponse:
             for line in [
                 'data: {"id": "msg_123", "choices": [{"delta": {"tool_calls": [{"index": 0, "id": "call_123", "function": {"name": "get_weather"}}]}}]}',
                 'data: {"id": "msg_123", "choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{}"}}]}}]}',
-                'data: [DONE]',
+                "data: [DONE]",
             ]:
                 yield line
+
         mock_response.aiter_lines = aiter_lines
 
         mock_client = MagicMock()
-        mock_client.stream = MagicMock(return_value=async_context_manager(mock_response))
+        mock_client.stream = MagicMock(
+            return_value=async_context_manager(mock_response)
+        )
 
         chunks = []
         async for chunk in _stream_response(
@@ -157,8 +171,8 @@ class TestStreamResponse:
         ):
             chunks.append(chunk)
 
-        stream_text = ''.join(chunks)
-        assert 'tool_use' in stream_text
+        stream_text = "".join(chunks)
+        assert "tool_use" in stream_text
 
     @pytest.mark.asyncio
     async def test_stream_with_usage_only_chunk(self):
@@ -169,13 +183,16 @@ class TestStreamResponse:
         async def aiter_lines():
             for line in [
                 'data: {"id": "msg_123", "usage": {"prompt_tokens": 10, "completion_tokens": 5}}',
-                'data: [DONE]',
+                "data: [DONE]",
             ]:
                 yield line
+
         mock_response.aiter_lines = aiter_lines
 
         mock_client = MagicMock()
-        mock_client.stream = MagicMock(return_value=async_context_manager(mock_response))
+        mock_client.stream = MagicMock(
+            return_value=async_context_manager(mock_response)
+        )
 
         chunks = []
         async for chunk in _stream_response(
@@ -187,9 +204,9 @@ class TestStreamResponse:
         ):
             chunks.append(chunk)
 
-        stream_text = ''.join(chunks)
-        assert 'message_delta' in stream_text
-        assert 'input_tokens' in stream_text
+        stream_text = "".join(chunks)
+        assert "message_delta" in stream_text
+        assert "input_tokens" in stream_text
 
     @pytest.mark.asyncio
     async def test_stream_exception_handling(self):
@@ -207,7 +224,7 @@ class TestStreamResponse:
         ):
             chunks.append(chunk)
 
-        assert any('internal_error' in chunk for chunk in chunks)
+        assert any("internal_error" in chunk for chunk in chunks)
 
 
 class TestConvertResultToStream:
@@ -216,114 +233,190 @@ class TestConvertResultToStream:
     @pytest.mark.asyncio
     async def test_convert_text_only(self):
         """Test converting result with text only."""
-        result = JSONResponse(content={
-            "id": "msg_test",
-            "model": "test-model",
-            "role": "assistant",
-            "stop_reason": "end_turn",
-            "content": [{"type": "text", "text": "Hello world"}],
-            "usage": {"input_tokens": 10, "output_tokens": 5},
-        })
+        result = JSONResponse(
+            content={
+                "id": "msg_test",
+                "model": "test-model",
+                "role": "assistant",
+                "stop_reason": "end_turn",
+                "content": [{"type": "text", "text": "Hello world"}],
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            }
+        )
 
         chunks = []
         async for chunk in _convert_result_to_stream(result, "test-model"):
             chunks.append(chunk)
 
-        stream_text = ''.join(chunks)
-        assert 'message_start' in stream_text
-        assert 'Hello world' in stream_text
-        assert 'message_stop' in stream_text
+        stream_text = "".join(chunks)
+        assert "message_start" in stream_text
+        assert "Hello world" in stream_text
+        assert "message_stop" in stream_text
 
     @pytest.mark.asyncio
     async def test_convert_with_thinking(self):
         """Test converting result with thinking block."""
-        result = JSONResponse(content={
-            "id": "msg_test",
-            "model": "test-model",
-            "role": "assistant",
-            "stop_reason": "end_turn",
-            "content": [
-                {"type": "thinking", "thinking": "Let me analyze...", "signature": "sig123"},
-                {"type": "text", "text": "Result"},
-            ],
-            "usage": {"input_tokens": 10, "output_tokens": 5},
-        })
+        result = JSONResponse(
+            content={
+                "id": "msg_test",
+                "model": "test-model",
+                "role": "assistant",
+                "stop_reason": "end_turn",
+                "content": [
+                    {
+                        "type": "thinking",
+                        "thinking": "Let me analyze...",
+                        "signature": "sig123",
+                    },
+                    {"type": "text", "text": "Result"},
+                ],
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            }
+        )
 
         chunks = []
         async for chunk in _convert_result_to_stream(result, "test-model"):
             chunks.append(chunk)
 
-        stream_text = ''.join(chunks)
-        assert 'thinking' in stream_text
-        assert 'Let me analyze' in stream_text
+        stream_text = "".join(chunks)
+        assert "thinking" in stream_text
+        assert "Let me analyze" in stream_text
 
     @pytest.mark.asyncio
     async def test_convert_with_tool_use(self):
         """Test converting result with tool_use block."""
-        result = JSONResponse(content={
-            "id": "msg_test",
-            "model": "test-model",
-            "role": "assistant",
-            "stop_reason": "tool_use",
-            "content": [
-                {"type": "tool_use", "id": "tool_123", "name": "get_weather", "input": {"city": "NYC"}},
-            ],
-            "usage": {"input_tokens": 10, "output_tokens": 5},
-        })
+        result = JSONResponse(
+            content={
+                "id": "msg_test",
+                "model": "test-model",
+                "role": "assistant",
+                "stop_reason": "tool_use",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "tool_123",
+                        "name": "get_weather",
+                        "input": {"city": "NYC"},
+                    },
+                ],
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            }
+        )
 
         chunks = []
         async for chunk in _convert_result_to_stream(result, "test-model"):
             chunks.append(chunk)
 
-        stream_text = ''.join(chunks)
-        assert 'tool_use' in stream_text
-        assert 'get_weather' in stream_text
+        stream_text = "".join(chunks)
+        assert "tool_use" in stream_text
+        assert "get_weather" in stream_text
 
     @pytest.mark.asyncio
     async def test_convert_with_server_tool_use(self):
         """Test converting result with server_tool_use block."""
-        result = JSONResponse(content={
-            "id": "msg_test",
-            "model": "test-model",
-            "role": "assistant",
-            "stop_reason": "end_turn",
-            "content": [
-                {"type": "server_tool_use", "id": "srvtoolu_123", "name": "web_search", "input": {"query": "test"}},
-            ],
-            "usage": {"input_tokens": 10, "output_tokens": 5, "server_tool_use": {"web_search_requests": 1}},
-        })
+        result = JSONResponse(
+            content={
+                "id": "msg_test",
+                "model": "test-model",
+                "role": "assistant",
+                "stop_reason": "end_turn",
+                "content": [
+                    {
+                        "type": "server_tool_use",
+                        "id": "srvtoolu_123",
+                        "name": "web_search",
+                        "input": {"query": "test"},
+                    },
+                ],
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "server_tool_use": {"web_search_requests": 1},
+                },
+            }
+        )
 
         chunks = []
         async for chunk in _convert_result_to_stream(result, "test-model"):
             chunks.append(chunk)
 
-        stream_text = ''.join(chunks)
-        assert 'server_tool_use' in stream_text
+        stream_text = "".join(chunks)
+        assert "server_tool_use" in stream_text
 
     @pytest.mark.asyncio
     async def test_convert_with_web_search_result(self):
         """Test converting result with web_search_tool_result block."""
-        result = JSONResponse(content={
-            "id": "msg_test",
-            "model": "test-model",
-            "role": "assistant",
-            "stop_reason": "end_turn",
-            "content": [
-                {
-                    "type": "web_search_tool_result",
-                    "tool_use_id": "srvtoolu_123",
-                    "results": [{"type": "web_search_result", "url": "https://example.com", "title": "Example"}],
-                },
-            ],
-            "usage": {"input_tokens": 10, "output_tokens": 5},
-        })
+        result = JSONResponse(
+            content={
+                "id": "msg_test",
+                "model": "test-model",
+                "role": "assistant",
+                "stop_reason": "end_turn",
+                "content": [
+                    {
+                        "type": "web_search_tool_result",
+                        "tool_use_id": "srvtoolu_123",
+                        "results": [
+                            {
+                                "type": "web_search_result",
+                                "url": "https://example.com",
+                                "title": "Example",
+                            }
+                        ],
+                        "content": [
+                            {
+                                "type": "web_search_result",
+                                "url": "https://example.com",
+                                "title": "Example",
+                            }
+                        ],
+                    },
+                ],
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            }
+        )
 
         chunks = []
         async for chunk in _convert_result_to_stream(result, "test-model"):
             chunks.append(chunk)
 
-        stream_text = ''.join(chunks)
-        assert 'web_search_tool_result' in stream_text
+        stream_text = "".join(chunks)
+        assert "web_search_tool_result" in stream_text
+
+    @pytest.mark.asyncio
+    async def test_convert_with_web_search_error_result(self):
+        """Test converting result with web_search_tool_result error block."""
+        result = JSONResponse(
+            content={
+                "id": "msg_test",
+                "model": "test-model",
+                "role": "assistant",
+                "stop_reason": "end_turn",
+                "content": [
+                    {
+                        "type": "web_search_tool_result",
+                        "tool_use_id": "srvtoolu_123",
+                        "results": {
+                            "type": "web_search_tool_result_error",
+                            "error_code": "max_uses_exceeded",
+                        },
+                        "content": {
+                            "type": "web_search_tool_result_error",
+                            "error_code": "max_uses_exceeded",
+                        },
+                    },
+                ],
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            }
+        )
+
+        chunks = []
+        async for chunk in _convert_result_to_stream(result, "test-model"):
+            chunks.append(chunk)
+
+        stream_text = "".join(chunks)
+        assert "web_search_tool_result" in stream_text
+        assert "web_search_tool_result_error" in stream_text
 
 
 class TestListModels:
@@ -341,10 +434,10 @@ class TestListModels:
         mock_response.status_code = 200
         mock_response.json = MagicMock(return_value={"data": [{"id": "gpt-4"}]})
 
-        with patch('httpx.AsyncClient.get', return_value=mock_response):
+        with patch("httpx.AsyncClient.get", return_value=mock_response):
             result = await list_models(settings)
             assert result.status_code == 200
-            assert 'gpt-4' in str(result.body)
+            assert "gpt-4" in str(result.body)
 
     @pytest.mark.asyncio
     async def test_list_models_with_org_and_project(self):
@@ -371,7 +464,7 @@ class TestListModels:
             async def get(self, url, headers=None):
                 return mock_response
 
-        with patch('httpx.AsyncClient', return_value=AsyncClientMock()):
+        with patch("httpx.AsyncClient", return_value=AsyncClientMock()):
             result = await list_models(settings)
             assert result.status_code == 200
 
@@ -383,10 +476,12 @@ class TestListModels:
             openai_base_url="https://api.openai.com/v1",
         )
 
-        with patch('httpx.AsyncClient.get', side_effect=httpx.RequestError("Connection failed")):
+        with patch(
+            "httpx.AsyncClient.get", side_effect=httpx.RequestError("Connection failed")
+        ):
             with pytest.raises(Exception) as exc_info:
                 await list_models(settings)
-            assert exc_info.value.status_code == 502
+            assert getattr(exc_info.value, "status_code", None) == 502
 
 
 class TestCountTokens:
@@ -396,10 +491,14 @@ class TestCountTokens:
     async def test_count_tokens_success(self):
         """Test successful token counting."""
         mock_request = MagicMock()
-        mock_request.body = AsyncMock(return_value=json.dumps({
-            "model": "test-model",
-            "messages": [{"role": "user", "content": "Hello world"}],
-        }).encode())
+        mock_request.body = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "model": "test-model",
+                    "messages": [{"role": "user", "content": "Hello world"}],
+                }
+            ).encode()
+        )
 
         settings = Settings(openai_api_key="test-key")
 
@@ -448,10 +547,14 @@ class TestCountTokens:
     async def test_count_tokens_invalid_messages(self):
         """Test token counting with invalid messages."""
         mock_request = MagicMock()
-        mock_request.body = AsyncMock(return_value=json.dumps({
-            "model": "test-model",
-            "messages": "not a list",
-        }).encode())
+        mock_request.body = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "model": "test-model",
+                    "messages": "not a list",
+                }
+            ).encode()
+        )
 
         settings = Settings(openai_api_key="test-key")
 
@@ -462,11 +565,15 @@ class TestCountTokens:
     async def test_count_tokens_with_system(self):
         """Test token counting with system prompt."""
         mock_request = MagicMock()
-        mock_request.body = AsyncMock(return_value=json.dumps({
-            "model": "test-model",
-            "system": "You are a helpful assistant.",
-            "messages": [{"role": "user", "content": "Hello"}],
-        }).encode())
+        mock_request.body = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "model": "test-model",
+                    "system": "You are a helpful assistant.",
+                    "messages": [{"role": "user", "content": "Hello"}],
+                }
+            ).encode()
+        )
 
         settings = Settings(openai_api_key="test-key")
 
@@ -489,11 +596,15 @@ class TestCountTokens:
     async def test_count_tokens_with_system_blocks(self):
         """Test token counting with system as list of blocks."""
         mock_request = MagicMock()
-        mock_request.body = AsyncMock(return_value=json.dumps({
-            "model": "test-model",
-            "system": [{"type": "text", "text": "You are helpful."}],
-            "messages": [],
-        }).encode())
+        mock_request.body = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "model": "test-model",
+                    "system": [{"type": "text", "text": "You are helpful."}],
+                    "messages": [],
+                }
+            ).encode()
+        )
 
         settings = Settings(openai_api_key="test-key")
 
@@ -516,11 +627,15 @@ class TestCountTokens:
     async def test_count_tokens_with_tools(self):
         """Test token counting with tools."""
         mock_request = MagicMock()
-        mock_request.body = AsyncMock(return_value=json.dumps({
-            "model": "test-model",
-            "messages": [],
-            "tools": [{"type": "function", "function": {"name": "test"}}],
-        }).encode())
+        mock_request.body = AsyncMock(
+            return_value=json.dumps(
+                {
+                    "model": "test-model",
+                    "messages": [],
+                    "tools": [{"type": "function", "function": {"name": "test"}}],
+                }
+            ).encode()
+        )
 
         settings = Settings(openai_api_key="test-key")
 
@@ -585,9 +700,13 @@ class TestAddToolResultsToMessages:
 
         mock_handler = MagicMock()
 
-        tool_results = [{"role": "tool", "tool_call_id": "call_123", "content": "result"}]
+        tool_results = [
+            {"role": "tool", "tool_call_id": "call_123", "content": "result"}
+        ]
 
-        result = _add_tool_results_to_messages(messages, tool_calls, mock_handler, tool_results=tool_results)
+        result = _add_tool_results_to_messages(
+            messages, tool_calls, mock_handler, tool_results=tool_results
+        )
 
         assert len(result) == 3  # original + assistant + tool
         assert result[1]["role"] == "assistant"
@@ -597,11 +716,15 @@ class TestAddToolResultsToMessages:
     def test_add_error_results(self):
         """Test adding error results to messages."""
         messages = []
-        tool_calls = [{"id": "call_123", "openai_id": "call_123", "function": {"name": "test"}}]
+        tool_calls = [
+            {"id": "call_123", "openai_id": "call_123", "function": {"name": "test"}}
+        ]
 
         mock_handler = MagicMock()
 
-        result = _add_tool_results_to_messages(messages, tool_calls, mock_handler, is_error=True)
+        result = _add_tool_results_to_messages(
+            messages, tool_calls, mock_handler, is_error=True
+        )
 
         assert len(result) == 2  # assistant + error tool
         assert result[1]["role"] == "tool"
