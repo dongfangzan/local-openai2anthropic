@@ -77,7 +77,7 @@ websearch_max_uses = 5
 - **格式**: `assert app.version == "x.y.z"`
 - **示例**: `assert app.version == "0.3.5"`
 
-### 6. Git Tag
+### 6. Git Tag (重要：必须推送才能触发发布)
 - **格式**: `vx.y.z`
 - **示例**: `v0.3.5`
 - **命令**:
@@ -85,6 +85,7 @@ websearch_max_uses = 5
   git tag v0.3.5
   git push origin v0.3.5
   ```
+- **注意**: 推送 tag 会触发 GitHub Actions 自动发布到 PyPI，不要忘记推送 tag！
 
 ## 版本号格式
 
@@ -98,9 +99,15 @@ websearch_max_uses = 5
 1. 更新上述所有文件中的版本号
 2. 运行测试确保通过: `pytest`
 3. 提交更改: `git commit -m "chore(release): bump version to x.y.z"`
-4. 创建标签: `git tag vx.y.z`
-5. 推送代码和标签: `git push && git push origin vx.y.z`
+4. 推送代码: `git push`
+5. **创建并推送标签** (触发 GitHub Actions 发布):
+   ```bash
+   git tag vx.y.z
+   git push origin vx.y.z
+   ```
 6. GitHub Actions 将自动发布到 PyPI
+
+**重要**: 第 5 步推送 tag 是触发自动发布的关键步骤，不要忘记！
 
 ## 代码提交规范
 
