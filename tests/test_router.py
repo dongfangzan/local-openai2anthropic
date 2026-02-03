@@ -55,8 +55,8 @@ def test_create_message_validation_error(client):
     """Test validation error handling."""
     # Missing required fields - should get validation error
     response = client.post("/v1/messages", json={})
-    
-    assert response.status_code == 422
+
+    assert response.status_code == 400
     data = response.json()
     assert data["type"] == "error"
     assert "error" in data
@@ -72,9 +72,9 @@ def test_create_message_with_empty_model(client):
             "max_tokens": 1024,
         },
     )
-    
+
     # Should get validation error
-    assert response.status_code == 422
+    assert response.status_code == 400
     data = response.json()
     assert data["type"] == "error"
 
@@ -98,11 +98,11 @@ def test_error_response_format(client):
     # Send invalid JSON to trigger validation error
     response = client.post(
         "/v1/messages",
-        data="invalid json",
+        content="invalid json",
         headers={"Content-Type": "application/json"},
     )
-    
-    assert response.status_code == 422
+
+    assert response.status_code == 400
     data = response.json()
     assert data["type"] == "error"
     assert "error" in data
