@@ -125,6 +125,9 @@ class TestWebSearchServerTool:
 
     def test_is_enabled_with_key(self):
         """Test is_enabled when API key is present."""
+        # Reset the client cache to ensure fresh state
+        WebSearchServerTool._client = None
+
         settings = Settings(
             openai_api_key="test",
             tavily_api_key="tvly-test",

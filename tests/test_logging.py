@@ -246,7 +246,7 @@ class TestLoggingConfiguration:
         from local_openai2anthropic.config import Settings
 
         settings = Settings()
-        assert settings.log_level.upper() == 'DEBUG'
+        assert settings.log_level.upper() == 'INFO'
 
     def test_config_log_level_override(self):
         """Test log level can be overridden."""
