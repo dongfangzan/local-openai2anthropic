@@ -251,7 +251,7 @@ Examples:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.2.5",
+        version="%(prog)s 0.3.5",
     )
 
     # Create subparsers for commands
