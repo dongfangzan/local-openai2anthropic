@@ -186,9 +186,7 @@ def create_config_from_dict(config: dict) -> None:
     # Build config dict with proper structure
     toml_config: dict = {
         "openai_api_key": config.get("openai_api_key", ""),
-        "openai_base_url": config.get(
-            "openai_base_url", "https://api.openai.com/v1"
-        ),
+        "openai_base_url": config.get("openai_base_url", "https://api.openai.com/v1"),
         "host": config.get("host", "0.0.0.0"),
         "port": config.get("port", 8080),
         "request_timeout": config.get("request_timeout", 300.0),

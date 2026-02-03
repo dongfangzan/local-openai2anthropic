@@ -417,7 +417,9 @@ class TestCreateConfigFromDict:
 
         assert 'api_key = "server-api-key"' in content
 
-    def test_create_config_from_dict_without_optional_values(self, tmp_path, monkeypatch):
+    def test_create_config_from_dict_without_optional_values(
+        self, tmp_path, monkeypatch
+    ):
         """Test creating config without optional values omits them."""
         monkeypatch.setattr(
             "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
@@ -608,9 +610,7 @@ class TestGetSettingsInteractive:
         captured = capsys.readouterr()
         assert "Created default config file" in captured.out
 
-    def test_get_settings_interactive_mode(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_get_settings_interactive_mode(self, tmp_path, monkeypatch, capsys):
         """Test get_settings in interactive mode runs setup wizard."""
         # Clear cache
         get_settings.cache_clear()

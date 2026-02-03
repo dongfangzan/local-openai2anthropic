@@ -288,9 +288,7 @@ class TestWebSearchServerTool:
         with patch.object(
             WebSearchServerTool,
             "_get_client",
-            return_value=MagicMock(
-                search=AsyncMock(return_value=([], "search_error"))
-            ),
+            return_value=MagicMock(search=AsyncMock(return_value=([], "search_error"))),
         ):
             result = await WebSearchServerTool.execute(
                 call_id="call_123",
@@ -345,7 +343,13 @@ class TestWebSearchServerTool:
         """Test building tool result message for success."""
         result = ToolResult(
             success=True,
-            content=[{"type": "web_search_result", "url": "https://example.com", "title": "Example"}],
+            content=[
+                {
+                    "type": "web_search_result",
+                    "url": "https://example.com",
+                    "title": "Example",
+                }
+            ],
         )
 
         message = WebSearchServerTool.build_tool_result_message(
