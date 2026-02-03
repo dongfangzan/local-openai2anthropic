@@ -15,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from local_openai2anthropic.config import Settings, get_settings
+from local_openai2anthropic.config import Settings, get_config_file, get_settings
 from local_openai2anthropic.protocol import AnthropicError, AnthropicErrorResponse
 from local_openai2anthropic.router import router
 
@@ -203,11 +203,13 @@ def run_foreground(settings: Settings) -> None:
     """Run server in foreground mode (blocking)."""
     # Validate required settings
     if not settings.openai_api_key:
+        config_file = get_config_file()
         print(
-            "Error: OA2A_OPENAI_API_KEY environment variable is required.\n"
-            "Set it via:\n"
-            "  - Environment variable: export OA2A_OPENAI_API_KEY='your-key'\n"
-            "  - Or create a .env file with OA2A_OPENAI_API_KEY=your-key",
+            f"Error: openai_api_key is required.\n"
+            f"Please edit the configuration file:\n"
+            f"  {config_file}\n"
+            f"\nSet your OpenAI API key:\n"
+            f'  openai_api_key = "your-api-key"',
             file=sys.stderr,
         )
         sys.exit(1)

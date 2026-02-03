@@ -2,8 +2,122 @@
 Tests for the config module.
 """
 
+from pathlib import Path
+
 import pytest
-from local_openai2anthropic.config import Settings, get_settings
+
+from local_openai2anthropic.config import (
+    Settings,
+    create_default_config,
+    get_config_dir,
+    get_config_file,
+    get_settings,
+    load_config_from_file,
+)
+
+
+class TestConfigFile:
+    """Tests for config file management."""
+
+    def test_get_config_dir(self):
+        """Test getting config directory."""
+        config_dir = get_config_dir()
+        assert isinstance(config_dir, Path)
+        assert config_dir.name == ".oa2a"
+
+    def test_get_config_file(self):
+        """Test getting config file path."""
+        config_file = get_config_file()
+        assert isinstance(config_file, Path)
+        assert config_file.name == "config.toml"
+        assert config_file.parent.name == ".oa2a"
+
+    def test_create_default_config(self, tmp_path, monkeypatch):
+        """Test creating default config file."""
+        # Mock get_config_dir to use temp directory
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
+        # Should create new file
+        created = create_default_config()
+        assert created is True
+        assert get_config_file().exists()
+
+        # Verify content
+        content = get_config_file().read_text()
+        assert "OA2A Configuration File" in content
+        assert 'openai_base_url = "https://api.openai.com/v1"' in content
+
+        # Should not create if exists
+        created = create_default_config()
+        assert created is False
+
+    def test_create_default_config_existing(self, tmp_path, monkeypatch):
+        """Test that existing config is not overwritten."""
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
+        # Create config dir and file manually
+        config_dir = tmp_path / ".oa2a"
+        config_dir.mkdir(parents=True)
+        config_file = config_dir / "config.toml"
+        config_file.write_text("custom_config = true")
+
+        # Should not overwrite
+        created = create_default_config()
+        assert created is False
+        assert config_file.read_text() == "custom_config = true"
+
+    def test_load_config_from_file(self, tmp_path, monkeypatch):
+        """Test loading config from TOML file."""
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
+        # Create config file
+        create_default_config()
+
+        # Load config
+        config = load_config_from_file()
+        assert "openai_base_url" in config
+        assert config["openai_base_url"] == "https://api.openai.com/v1"
+        assert config["port"] == 8080
+        assert config["host"] == "0.0.0.0"
+
+    def test_load_config_from_file_not_exists(self, tmp_path, monkeypatch):
+        """Test loading config when file doesn't exist."""
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
+        # Should return empty dict
+        config = load_config_from_file()
+        assert config == {}
+
+    def test_load_config_custom_values(self, tmp_path, monkeypatch):
+        """Test loading config with custom values."""
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
+        # Create config dir and file with custom values
+        config_dir = tmp_path / ".oa2a"
+        config_dir.mkdir(parents=True)
+        config_file = config_dir / "config.toml"
+        config_file.write_text("""
+openai_api_key = "custom-key"
+host = "127.0.0.1"
+port = 9000
+log_level = "INFO"
+""")
+
+        config = load_config_from_file()
+        assert config["openai_api_key"] == "custom-key"
+        assert config["host"] == "127.0.0.1"
+        assert config["port"] == 9000
+        assert config["log_level"] == "INFO"
 
 
 class TestSettings:
@@ -48,6 +162,47 @@ class TestSettings:
         assert settings.cors_credentials is False
         assert settings.cors_methods == ["GET", "POST"]
         assert settings.cors_headers == ["Authorization", "Content-Type"]
+
+    def test_settings_from_toml(self, tmp_path, monkeypatch):
+        """Test creating Settings from TOML file."""
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
+        # Create config with custom values
+        config_dir = tmp_path / ".oa2a"
+        config_dir.mkdir(parents=True)
+        config_file = config_dir / "config.toml"
+        config_file.write_text("""
+openai_api_key = "test-key"
+host = "127.0.0.1"
+port = 9000
+""")
+
+        settings = Settings.from_toml()
+        assert settings.openai_api_key == "test-key"
+        assert settings.host == "127.0.0.1"
+        assert settings.port == 9000
+        # Default values should still apply
+        assert settings.openai_base_url == "https://api.openai.com/v1"
+
+    def test_settings_from_toml_empty_file(self, tmp_path, monkeypatch):
+        """Test creating Settings from empty TOML file."""
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
+        # Create empty config file
+        config_dir = tmp_path / ".oa2a"
+        config_dir.mkdir(parents=True)
+        config_file = config_dir / "config.toml"
+        config_file.write_text("")
+
+        settings = Settings.from_toml()
+        # Should use all default values
+        assert settings.openai_base_url == "https://api.openai.com/v1"
+        assert settings.host == "0.0.0.0"
+        assert settings.port == 8080
 
     def test_openai_auth_headers_basic(self):
         """Test OpenAI auth headers with just API key."""
@@ -158,19 +313,51 @@ class TestSettings:
 class TestGetSettings:
     """Tests for get_settings function."""
 
-    def test_returns_settings_instance(self):
+    def test_returns_settings_instance(self, tmp_path, monkeypatch):
         """Test that get_settings returns a Settings instance."""
-        settings = get_settings()
+        # Clear the cache first
+        get_settings.cache_clear()
 
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
+        settings = get_settings()
         assert isinstance(settings, Settings)
 
-    def test_caching(self):
+    def test_caching(self, tmp_path, monkeypatch):
         """Test that get_settings caches the result."""
+        # Clear the cache first
+        get_settings.cache_clear()
+
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
         settings1 = get_settings()
         settings2 = get_settings()
 
         # Should be the same object due to @lru_cache
         assert settings1 is settings2
+
+    def test_get_settings_creates_default_config(self, tmp_path, monkeypatch, capsys):
+        """Test that get_settings creates default config and notifies user."""
+        # Clear the cache first
+        get_settings.cache_clear()
+
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
+        )
+
+        settings = get_settings()
+
+        # Check that config file was created
+        assert get_config_file().exists()
+
+        # Check notification was printed
+        captured = capsys.readouterr()
+        assert "Created default config file" in captured.out
+        assert "Please edit it to add your API keys and settings" in captured.out
 
 
 if __name__ == "__main__":
