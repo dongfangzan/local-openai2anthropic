@@ -203,112 +203,43 @@ oa2a stop
 - ✅ **Streaming responses** - Real-time token streaming via SSE
 - ✅ **Tool calling** - Local LLM function calling support
 - ✅ **Vision models** - Multi-modal input for vision-capable models
-- ✅ **Web Search** - Give your local LLM internet access (see below)
+- ✅ **Web Search** - Built-in Tavily web search for local models
 - ✅ **Thinking mode** - Supports reasoning/thinking model outputs
 
 ---
 
-## Web Search Capability 🔍
+## Web Search 🔍
 
-**Bridge the gap: Give your local LLM the web search power that Claude Code users enjoy!**
+Enable web search for your local LLM using [Tavily](https://tavily.com).
 
-When using locally-hosted models with Claude Code, you lose access to the built-in web search tool. This proxy fills that gap by providing a server-side web search implementation powered by [Tavily](https://tavily.com).
+**Setup:**
 
-### The Problem
+1. Get a free API key at [tavily.com](https://tavily.com)
 
-| Scenario | Web Search Available? |
-|----------|----------------------|
-| Using Claude (cloud) in Claude Code | ✅ Built-in |
-| Using local vLLM/SGLang in Claude Code | ❌ Not available |
-| **Using this proxy + local LLM** | ✅ **Enabled via Tavily** |
-
-### How It Works
-
-```
-Claude Code → Anthropic SDK → This Proxy → Local LLM
-                                      ↓
-                                 Tavily API (Web Search)
-```
-
-The proxy intercepts `web_search_20250305` tool calls and handles them directly, regardless of whether your local model supports web search natively.
-
-### Setup Tavily Search
-
-1. **Get a free API key** at [tavily.com](https://tavily.com) - generous free tier available
-
-2. **Configure the proxy** in `~/.oa2a/config.toml`:
-
+2. Add to your config (`~/.oa2a/config.toml`):
 ```toml
-openai_api_key = "dummy"
-openai_base_url = "http://localhost:8000/v1"
-tavily_api_key = "tvly-your-tavily-api-key"  # Enable web search
+tavily_api_key = "tvly-your-api-key"
 ```
 
-Then start the proxy:
-```bash
-oa2a
-```
+3. Use `web_search_20250305` tool in your app - the proxy handles search automatically.
 
-3. **Use in your app:**
-```python
-import anthropic
-
-client = anthropic.Anthropic(
-    base_url="http://localhost:8080",
-    api_key="dummy-key",
-)
-
-message = client.messages.create(
-    model="meta-llama/Llama-2-7b-chat-hf",
-    max_tokens=1024,
-    tools=[
-        {
-            "name": "web_search_20250305",
-            "description": "Search the web for current information",
-            "input_schema": {
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "Search query"},
-                },
-                "required": ["query"],
-            },
-        }
-    ],
-    messages=[{"role": "user", "content": "What happened in AI today?"}],
-)
-
-if message.stop_reason == "tool_use":
-    tool_use = message.content[-1]
-    print(f"Searching: {tool_use.input}")
-    # The proxy automatically calls Tavily and returns results
-```
-
-### Tavily Configuration Options
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OA2A_TAVILY_API_KEY` | - | Your Tavily API key ([get free at tavily.com](https://tavily.com)) |
-| `OA2A_TAVILY_MAX_RESULTS` | 5 | Number of search results to return |
-| `OA2A_TAVILY_TIMEOUT` | 30 | Search timeout in seconds |
-| `OA2A_WEBSEARCH_MAX_USES` | 5 | Max search calls per request |
+**Options:** `tavily_max_results` (default: 5), `tavily_timeout` (default: 30), `websearch_max_uses` (default: 5)
 
 ---
 
 ## Configuration
 
-Configuration is stored in `~/.oa2a/config.toml` (created automatically on first run).
+Config file: `~/.oa2a/config.toml` (auto-created on first run)
 
 | Option | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `openai_base_url` | ✅ | - | Your local LLM's OpenAI-compatible endpoint |
-| `openai_api_key` | ✅ | - | API key for the local LLM backend |
-| `port` | ❌ | 8080 | Proxy server port |
-| `host` | ❌ | 0.0.0.0 | Proxy server host |
-| `api_key` | ❌ | - | API key for authenticating requests to this proxy |
-| `tavily_api_key` | ❌ | - | Enable web search ([tavily.com](https://tavily.com)) |
-| `log_level` | ❌ | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
-
-**First-time Setup**: Run `oa2a` without config file to launch the interactive setup wizard.
+| `openai_base_url` | ✅ | - | Local LLM endpoint (e.g., `http://localhost:8000/v1`) |
+| `openai_api_key` | ✅ | - | API key for local LLM |
+| `port` | ❌ | 8080 | Proxy port |
+| `host` | ❌ | 0.0.0.0 | Proxy host |
+| `api_key` | ❌ | - | Auth key for this proxy |
+| `tavily_api_key` | ❌ | - | Enable web search |
+| `log_level` | ❌ | INFO | DEBUG, INFO, WARNING, ERROR |
 
 ---
 
