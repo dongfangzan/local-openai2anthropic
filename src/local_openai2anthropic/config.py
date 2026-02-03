@@ -42,6 +42,7 @@ class Settings(BaseSettings):
 
     # Logging
     log_level: str = "DEBUG"
+    log_dir: str = ""  # Empty means use platform-specific default
 
     # Tavily Web Search Configuration
     tavily_api_key: Optional[str] = None

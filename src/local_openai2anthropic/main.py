@@ -5,7 +5,10 @@ Main entry point for the local-openai2anthropic proxy server.
 
 import argparse
 import logging
+import os
 import sys
+from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request
@@ -17,16 +20,82 @@ from local_openai2anthropic.protocol import AnthropicError, AnthropicErrorRespon
 from local_openai2anthropic.router import router
 
 
+def get_default_log_dir() -> str:
+    """Get default log directory based on platform.
+
+    Returns:
+        Path to log directory
+    """
+    if sys.platform == 'win32':
+        # Windows: use %LOCALAPPDATA%\local-openai2anthropic\logs
+        base_dir = os.environ.get('LOCALAPPDATA', os.path.expanduser('~\\AppData\\Local'))
+        return os.path.join(base_dir, 'local-openai2anthropic', 'logs')
+    else:
+        # macOS/Linux: use ~/.local/share/local-openai2anthropic/logs
+        return os.path.expanduser("~/.local/share/local-openai2anthropic/logs")
+
+
+def setup_logging(log_level: str, log_dir: str | None = None) -> None:
+    """Setup logging with daily rotation, keeping only today's logs.
+
+    Args:
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
+        log_dir: Directory for log files (platform-specific default)
+    """
+    # Default log directory based on platform
+    if log_dir is None:
+        log_dir = get_default_log_dir()
+
+    # Expand user directory if specified
+    log_dir = os.path.expanduser(log_dir)
+
+    # Create log directory if it doesn't exist
+    Path(log_dir).mkdir(parents=True, exist_ok=True)
+
+    log_file = os.path.join(log_dir, "server.log")
+
+    # Create formatter
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+
+    # Setup root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, log_level.upper()))
+
+    # Clear existing handlers
+    root_logger.handlers = []
+
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    root_logger.addHandler(console_handler)
+
+    # File handler with daily rotation
+    # backupCount=0 means no backup files are kept (only today's log)
+    # when='midnight' rotates at midnight
+    file_handler = TimedRotatingFileHandler(
+        log_file,
+        when='midnight',
+        interval=1,
+        backupCount=0,  # Keep only today's log
+        encoding='utf-8'
+    )
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
+
+    logging.info(f"Logging configured. Log file: {log_file}")
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Create and configure the FastAPI application."""
     if settings is None:
         settings = get_settings()
 
-    # Configure logging
-    logging.basicConfig(
-        level=getattr(logging, settings.log_level.upper()),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
+    # Configure logging with daily rotation
+    # Use platform-specific default if log_dir is not set
+    log_dir = settings.log_dir if settings.log_dir else None
+    setup_logging(settings.log_level, log_dir)
 
     # Create FastAPI app
     app = FastAPI(
