@@ -73,22 +73,35 @@ sglang launch --model-path meta-llama/Llama-2-7b-chat-hf --port 8000
 
 > **注意：** 如果你使用 [Ollama](https://ollama.com)，它原生支持 Anthropic API 格式，无需使用本代理工具。直接将 Claude SDK 指向 `http://localhost:11434/v1` 即可。
 
-### 3. 配置代理
+### 3. 启动代理（推荐方式）
 
-首次运行时，交互式配置向导会引导你创建配置文件 `~/.oa2a/config.toml`：
+运行以下命令以后台模式启动代理：
 
 ```bash
-oa2a
-# 交互式配置向导启动：
-# - 输入 OpenAI API Key（用于本地 LLM 后端）
-# - 输入本地 LLM 的 base URL（如 http://localhost:8000/v1）
-# - 配置服务器 host 和 port（可选）
-# - 设置代理 API 认证密钥（可选）
+oa2a start
+```
+
+**首次配置**：如果 `~/.oa2a/config.toml` 不存在，交互式配置向导会引导你完成：
+- 输入 OpenAI API Key（用于本地 LLM 后端）
+- 输入本地 LLM 的 base URL（如 `http://localhost:8000/v1`）
+- 配置服务器 host 和 port（可选）
+- 设置代理 API 认证密钥（可选）
+
+配置完成后，服务将在 `http://localhost:8080` 启动。
+
+**守护进程管理命令：**
+
+```bash
+oa2a logs               # 显示最后 50 行日志
+oa2a logs -f            # 实时跟踪日志 (Ctrl+C 退出)
+oa2a status             # 检查服务是否运行
+oa2a stop               # 停止后台服务
+oa2a restart            # 使用相同配置重启
 ```
 
 **手动配置**
 
-你也可以直接编辑配置文件 `~/.oa2a/config.toml`：
+你也可以直接创建/编辑配置文件 `~/.oa2a/config.toml`：
 
 ```toml
 # OA2A 配置文件
@@ -96,28 +109,6 @@ openai_api_key = "dummy"
 openai_base_url = "http://localhost:8000/v1"
 host = "0.0.0.0"
 port = 8080
-```
-
-### 4. 启动代理
-
-**方式 A: 后台运行（推荐）**
-
-```bash
-oa2a start              # 后台启动服务
-# 代理在 http://localhost:8080 启动
-
-# 查看日志
-oa2a logs               # 显示最后 50 行日志
-oa2a logs -f            # 实时跟踪日志 (Ctrl+C 退出)
-
-# 检查状态
-oa2a status             # 检查服务是否运行
-
-# 停止服务
-oa2a stop               # 停止后台服务
-
-# 重启服务
-oa2a restart            # 使用相同配置重启
 ```
 
 **方式 B: 前台运行**
@@ -178,15 +169,6 @@ print(message.content[0].text)
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Haiku 模式默认模型 |
 | `ANTHROPIC_REASONING_MODEL` | 推理任务默认模型 |
 
-2. **或者在运行 Claude Code 前设置环境变量**：
-
-```bash
-export ANTHROPIC_BASE_URL=http://localhost:8080
-export ANTHROPIC_API_KEY=dummy-key
-
-claude
-```
-
 ### 完整工作流示例
 
 确保 `~/.claude/settings.json` 已按上述步骤配置好。
@@ -196,23 +178,10 @@ claude
 vllm serve meta-llama/Llama-2-7b-chat-hf
 ```
 
-终端 2 - 配置并启动代理（后台运行）：
+终端 2 - 启动代理（后台运行）：
 ```bash
-# 首次运行：交互式配置（创建 ~/.oa2a/config.toml）
-# 或手动编辑：~/.oa2a/config.toml
-
+# 首次运行：交互式配置向导会引导你完成配置
 oa2a start
-```
-
-**配置文件示例** (`~/.oa2a/config.toml`)：
-```toml
-openai_api_key = "dummy"
-openai_base_url = "http://localhost:8000/v1"
-host = "0.0.0.0"
-port = 8080
-
-# 可选：启用网页搜索
-tavily_api_key = "tvly-your-tavily-api-key"
 ```
 
 终端 3 - 启动 Claude Code：
