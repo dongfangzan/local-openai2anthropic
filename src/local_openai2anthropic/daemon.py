@@ -338,9 +338,10 @@ def restart_daemon(
         True if restarted successfully, False otherwise
     """
     print("Restarting server...")
-    stop_daemon()
-    # Small delay to ensure port is released
-    time.sleep(0.5)
+    # Use force=True to ensure the old process is killed even if it's stuck
+    stop_daemon(force=True)
+    # Longer delay to ensure port is fully released
+    time.sleep(1)
     return start_daemon(host, port, log_level)
 
 

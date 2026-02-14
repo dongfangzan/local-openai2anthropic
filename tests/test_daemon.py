@@ -248,13 +248,15 @@ class TestStopDaemon:
         """Test force stop."""
         with patch.object(daemon, "_cleanup_stale_pidfile"):
             with patch.object(daemon, "_read_pid", return_value=12345):
-                with patch.object(daemon, "_is_process_running", return_value=False):
-                    with patch("os.kill") as mock_kill:
-                        with patch.object(daemon, "_remove_pid"):
-                            with patch.object(daemon, "_remove_daemon_config"):
-                                result = daemon.stop_daemon(force=True)
-                                assert result is True
-                                mock_kill.assert_called_once_with(12345, signal.SIGKILL)
+                with patch.object(daemon, "_read_port", return_value=54321):
+                    with patch.object(daemon, "_is_process_running", return_value=False):
+                        with patch.object(daemon, "_is_port_in_use", return_value=False):
+                            with patch("os.kill") as mock_kill:
+                                with patch.object(daemon, "_remove_pid"):
+                                    with patch.object(daemon, "_remove_daemon_config"):
+                                        result = daemon.stop_daemon(force=True)
+                                        assert result is True
+                                        mock_kill.assert_called_once_with(12345, signal.SIGKILL)
 
     def test_stop_process_lookup_error(self):
         """Test stop when process lookup fails."""
