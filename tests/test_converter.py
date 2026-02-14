@@ -13,6 +13,7 @@ from openai.types.chat.chat_completion import Choice
 from openai.types.completion_usage import CompletionUsage
 
 from local_openai2anthropic.converter import (
+    _strip_claude_billing_header,
     convert_anthropic_to_openai,
     convert_openai_to_anthropic,
 )
@@ -173,10 +174,118 @@ class TestAnthropicToOpenAI:
             "messages": [{"role": "user", "content": "Hi"}],
             "thinking": {"type": "enabled", "budget_tokens": 2048},
         }
-        
+
         result = convert_anthropic_to_openai(params)
-        
+
         assert result["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
+
+
+class TestStripClaudeBillingHeader:
+    """Tests for Claude billing header stripping."""
+
+    def test_strip_billing_header_from_system(self):
+        """Test that Claude billing header is stripped from system prompts."""
+        params: MessageCreateParams = {
+            "model": "gpt-4o",
+            "max_tokens": 1024,
+            "system": """You are a helpful assistant.
+x-anthropic-billing-header:cc version=2.1.37.3a3;cc_entrypoint=claude-vscode;cch=694d6;
+Be helpful.""",
+            "messages": [
+                {"role": "user", "content": "Hello!"}
+            ],
+        }
+
+        result = convert_anthropic_to_openai(params)
+
+        # The billing header should be stripped
+        system_content = result["messages"][0]["content"]
+        assert "x-anthropic-billing-header" not in system_content
+        assert "cch=" not in system_content
+        assert "You are a helpful assistant." in system_content
+        assert "Be helpful." in system_content
+
+    def test_strip_billing_header_with_different_cch(self):
+        """Test that different cch values are all stripped."""
+        params1: MessageCreateParams = {
+            "model": "gpt-4o",
+            "max_tokens": 1024,
+            "system": "Test content\nx-anthropic-billing-header:cc version=2.1.37;cch=aaaa;",
+            "messages": [{"role": "user", "content": "Hi"}],
+        }
+
+        params2: MessageCreateParams = {
+            "model": "gpt-4o",
+            "max_tokens": 1024,
+            "system": "Test content\nx-anthropic-billing-header:cc version=2.1.37;cch=bbbb;",
+            "messages": [{"role": "user", "content": "Hi"}],
+        }
+
+        result1 = convert_anthropic_to_openai(params1)
+        result2 = convert_anthropic_to_openai(params2)
+
+        # Both should produce the same cleaned content
+        assert result1["messages"][0]["content"] == result2["messages"][0]["content"]
+        assert result1["messages"][0]["content"] == "Test content"
+
+    def test_strip_billing_header_from_list_system(self):
+        """Test that billing header is stripped from list-style system prompts."""
+        params: MessageCreateParams = {
+            "model": "gpt-4o",
+            "max_tokens": 1024,
+            "system": [
+                {
+                    "type": "text",
+                    "text": "You are helpful.\nx-anthropic-billing-header:cc version=2.1.37;cch=xxx;"
+                },
+                {
+                    "type": "text",
+                    "text": "Be polite."
+                }
+            ],
+            "messages": [
+                {"role": "user", "content": "Hello!"}
+            ],
+        }
+
+        result = convert_anthropic_to_openai(params)
+
+        system_content = result["messages"][0]["content"]
+        assert "x-anthropic-billing-header" not in system_content
+        assert "cch=" not in system_content
+        assert "You are helpful." in system_content
+        assert "Be polite." in system_content
+
+    def test_no_billing_header_unchanged(self):
+        """Test that prompts without billing header are unchanged."""
+        params: MessageCreateParams = {
+            "model": "gpt-4o",
+            "max_tokens": 1024,
+            "system": "You are a helpful assistant. Be polite.",
+            "messages": [
+                {"role": "user", "content": "Hello!"}
+            ],
+        }
+
+        result = convert_anthropic_to_openai(params)
+
+        assert result["messages"][0]["content"] == "You are a helpful assistant. Be polite."
+
+    def test_strip_claude_billing_header_function(self):
+        """Test the helper function directly."""
+        # Test with billing header
+        text = "Some text\nx-anthropic-billing-header:cc version=2.1.37;cch=abc123;\nMore text"
+        result = _strip_claude_billing_header(text)
+        assert result == "Some text\nMore text"
+
+        # Test without billing header
+        text2 = "Some text\nMore text"
+        result2 = _strip_claude_billing_header(text2)
+        assert result2 == "Some text\nMore text"
+
+        # Test empty
+        assert _strip_claude_billing_header("") == ""
+        assert _strip_claude_billing_header(None) is None
 
 
 class TestOpenAIToAnthropic:

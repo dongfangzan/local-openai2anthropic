@@ -25,6 +25,57 @@ from local_openai2anthropic.protocol import UsageWithCache
 
 logger = logging.getLogger(__name__)
 
+# Pattern to match Claude Code billing header in system prompts
+# Format: x-anthropic-billing-header:cc version=...;cc_entrypoint=...;cch=...;
+# The cch value changes on each request, breaking cache hits
+CLAUDE_BILLING_HEADER_PATTERN = "x-anthropic-billing-header"
+
+
+def _strip_claude_billing_header(text: str) -> str:
+    """Strip Claude Code billing header from system prompt text.
+
+    Claude Code 2.1.37+ adds a billing header like:
+    'x-anthropic-billing-header:cc version=2.1.37.3a3;cc_entrypoint=claude-vscode;cch=xxxxx;'
+
+    The 'cch' value changes on each request, which breaks upstream API caching.
+    We remove this header to restore cache hit rates.
+    """
+    if not text:
+        return text
+
+    # Check if the billing header is present
+    if CLAUDE_BILLING_HEADER_PATTERN not in text.lower():
+        return text
+
+    # Use regex to remove the billing header
+    # The billing header format is:
+    # x-anthropic-billing-header:cc version=X.X.X;cc_entrypoint=XXX;cch=XXXX;
+    # It always starts with "x-anthropic-billing-header:" and ends with a semicolon
+    import re
+
+    # Match the entire billing header starting from "x-anthropic-billing-header:"
+    # The header ends with the last semicolon before a newline or end of string
+    # We need to match everything from "x-anthropic-billing-header:" to the semicolon
+    # that follows "cch=..." (the last parameter)
+    #
+    # The pattern is:
+    # - Start with "x-anthropic-billing-header:"
+    # - Match everything until we find "cch=..." followed by a semicolon
+    pattern = r"x-anthropic-billing-header:.*?cch=[a-zA-Z0-9]+;?"
+
+    result = re.sub(pattern, "", text, flags=re.IGNORECASE)
+
+    # Clean up any double newlines or leading/trailing whitespace
+    result = re.sub(r"\n\n+", "\n", result)
+    result = result.strip()
+
+    logger.debug(
+        "Stripped Claude billing header: original length=%d, cleaned length=%d",
+        len(text),
+        len(result),
+    )
+    return result
+
 
 def convert_anthropic_to_openai(
     anthropic_params: MessageCreateParams,
@@ -73,7 +124,10 @@ def convert_anthropic_to_openai(
     # Add system message if provided
     if system:
         if isinstance(system, str):
-            openai_messages.append({"role": "system", "content": system})
+            # Strip Claude billing header to restore cache hit rates
+            cleaned_system = _strip_claude_billing_header(system)
+            if cleaned_system:
+                openai_messages.append({"role": "system", "content": cleaned_system})
         else:
             # Handle list of system blocks
             system_text = ""
@@ -81,7 +135,10 @@ def convert_anthropic_to_openai(
                 if isinstance(block, dict) and block.get("type") == "text":
                     system_text += block.get("text", "")
             if system_text:
-                openai_messages.append({"role": "system", "content": system_text})
+                # Strip Claude billing header from the combined system text
+                cleaned_system = _strip_claude_billing_header(system_text)
+                if cleaned_system:
+                    openai_messages.append({"role": "system", "content": cleaned_system})
 
     # Convert conversation messages
     # Handle ValidatorIterator from Pydantic by iterating directly
