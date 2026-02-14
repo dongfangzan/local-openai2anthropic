@@ -86,6 +86,30 @@ def _is_process_running(pid: int) -> bool:
         return False
 
 
+def _read_port() -> Optional[int]:
+    """Read port from daemon config file."""
+    config = _load_daemon_config()
+    if config and "port" in config:
+        return config["port"]
+    return None
+
+
+def _find_pid_by_port(port: int) -> Optional[int]:
+    """Find PID of process listening on the given port."""
+    try:
+        result = subprocess.run(
+            ["lsof", "-t", "-i", f":{port}"],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            # Return the first PID found
+            return int(result.stdout.strip().split()[0])
+    except (subprocess.SubprocessError, ValueError, IndexError, OSError):
+        pass
+    return None
+
+
 def _is_port_in_use(port: int, host: str = "0.0.0.0") -> bool:
     """Check if a port is already in use."""
     try:
@@ -243,6 +267,22 @@ def stop_daemon(force: bool = False) -> bool:
     _cleanup_stale_pidfile()
 
     pid = _read_pid()
+    port = _read_port()
+
+    # If pid file process not running but port still in use, find and kill the process
+    if pid is not None and not _is_process_running(pid) and port is not None:
+        if _is_port_in_use(port):
+            print(f"Process with PID {pid} not found but port {port} is in use, searching...")
+            found_pid = _find_pid_by_port(port)
+            if found_pid is not None:
+                pid = found_pid
+                print(f"Found process on port {port}: PID {pid}")
+            else:
+                # Port is in use by another process, clear the pidfile
+                _remove_pid()
+                print(f"Port {port} is in use by another process, clearing pidfile")
+                return True
+
     if pid is None:
         print("Server is not running")
         return True
