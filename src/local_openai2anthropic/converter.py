@@ -30,74 +30,6 @@ logger = logging.getLogger(__name__)
 # The cch value changes on each request, breaking cache hits
 CLAUDE_BILLING_HEADER_PATTERN = "x-anthropic-billing-header"
 
-# Pattern to match thinking tags in content
-# Some models (e.g., GLM-4.7) return thinking content as标签 instead of using reasoning_content field
-import re
-
-THINKING_TAG_PATTERN = re.compile(r"<think>(.*?)</think>", re.DOTALL)
-
-
-def extract_thinking_from_content(content: str) -> tuple[list[str], str]:
-    """Extract thinking content from content string.
-
-    Some models (e.g., GLM-4.7) return thinking content embedded in the content
-    field as '<think>...</think>' tags instead of using the reasoning_content field.
-
-    Args:
-        content: The content string that may contain thinking tags
-
-    Returns:
-        A tuple of (list of thinking contents, content with thinking tags removed)
-    """
-    if not content:
-        return [], ""
-
-    # Find all thinking blocks
-    thinking_blocks = THINKING_TAG_PATTERN.findall(content)
-
-    # Remove thinking tags from content
-    clean_content = THINKING_TAG_PATTERN.sub("", content)
-
-    # Recursively extract if there are more thinking tags after removal
-    # (handles cases like: "<think>A</think>text<think>B</think>")
-    while THINKING_TAG_PATTERN.search(clean_content):
-        more_thinking, clean_content = _extract_single_thinking(clean_content)
-        if more_thinking:
-            thinking_blocks.append(more_thinking)
-        else:
-            break
-
-    return thinking_blocks, clean_content
-
-
-def _extract_single_thinking(content: str) -> tuple[str, str]:
-    """Extract a single thinking block from the beginning of content.
-
-    Args:
-        content: The content string that may start with a thinking tag
-
-    Returns:
-        A tuple of (thinking content, remaining content after thinking tag)
-    """
-    if not content:
-        return "", ""
-
-    match = THINKING_TAG_PATTERN.search(content)
-    if not match:
-        return "", content
-
-    thinking = match.group(1)
-    # Find position of the full match (including tags)
-    start = match.start()
-    end = match.end()
-
-    if start > 0:
-        # There's text before the thinking tag - return thinking and text before
-        return thinking, content[:start] + content[end:]
-
-    # Thinking tag starts at position 0
-    return thinking, content[end:]
-
 
 def _strip_claude_billing_header(text: str) -> str:
     """Strip Claude Code billing header from system prompt text.
@@ -297,6 +229,7 @@ def convert_anthropic_to_openai(
     # Handle thinking parameter
     # vLLM/SGLang use chat_template_kwargs.thinking to toggle thinking mode
     # Some models use "thinking", others use "enable_thinking", so we include both
+    # clear_thinking: false keeps the thinking content in the conversation history
     if thinking and isinstance(thinking, dict):
         thinking_type = thinking.get("type")
         if thinking_type == "enabled":
@@ -304,6 +237,7 @@ def convert_anthropic_to_openai(
             params["chat_template_kwargs"] = {
                 "thinking": True,
                 "enable_thinking": True,
+                "clear_thinking": False,
             }
 
             # Log if budget_tokens was provided but will be ignored
@@ -314,6 +248,13 @@ def convert_anthropic_to_openai(
                     "vLLM/SGLang. Using default thinking configuration.",
                     budget_tokens,
                 )
+        elif thinking_type == "adaptive":
+            # Adaptive thinking mode - let the model decide
+            params["chat_template_kwargs"] = {
+                "thinking": True,
+                "enable_thinking": True,
+                "clear_thinking": False,
+            }
         else:
             # Default to disabled thinking mode if not explicitly enabled
             params["chat_template_kwargs"] = {
@@ -353,6 +294,7 @@ def _convert_anthropic_message_to_openai(
     openai_content: list[dict[str, Any]] = []
     tool_calls: list[dict[str, Any]] = []
     tool_call_results: list[dict[str, Any]] = []
+    reasoning_content: str = ""
 
     for block in content:
         if isinstance(block, str):
@@ -364,6 +306,12 @@ def _convert_anthropic_message_to_openai(
         if block_type == "text":
             text = block.get("text") if isinstance(block, dict) else block.text
             openai_content.append({"type": "text", "text": text})
+
+        elif block_type == "thinking":
+            # Extract thinking content to pass as reasoning_content in OpenAI format
+            thinking = block.get("thinking") if isinstance(block, dict) else block.thinking
+            if thinking:
+                reasoning_content += thinking
 
         elif block_type == "image":
             # Convert image to image_url format
@@ -460,6 +408,10 @@ def _convert_anthropic_message_to_openai(
     if tool_calls:
         primary_msg["tool_calls"] = tool_calls
 
+    # Add reasoning_content if thinking block was present
+    if reasoning_content:
+        primary_msg["reasoning_content"] = reasoning_content
+
     messages.append(primary_msg)
 
     # Add tool result messages separately
@@ -508,28 +460,6 @@ def convert_openai_to_anthropic(
 
     # Add reasoning content (thinking) first if present
     reasoning_content = getattr(message, "reasoning_content", None)
-
-    # If reasoning_content is not available, try to extract from content tags
-    thinking_blocks: list[str] = []
-    clean_text_content = ""
-    if not reasoning_content and message.content:
-        if isinstance(message.content, str):
-            # Extract thinking from content string
-            thinking_blocks, clean_text_content = extract_thinking_from_content(
-                message.content
-            )
-        elif isinstance(message.content, list):
-            # For list content, check each text part
-            text_parts = []
-            for part in message.content:
-                if hasattr(part, "type") and part.type == "text":
-                    blocks, clean_text = extract_thinking_from_content(part.text or "")
-                    thinking_blocks.extend(blocks)
-                    if clean_text:
-                        text_parts.append(clean_text)
-            clean_text_content = "\n".join(text_parts)
-
-    # Add reasoning_content if present (takes precedence over content tags)
     if reasoning_content:
         content.append(
             BetaThinkingBlock(
@@ -538,20 +468,15 @@ def convert_openai_to_anthropic(
                 signature="",  # Signature not available from OpenAI format
             )
         )
-    else:
-        # Add thinking blocks extracted from content tags
-        for thinking in thinking_blocks:
-            content.append(
-                BetaThinkingBlock(
-                    type="thinking",
-                    thinking=thinking,
-                    signature="",  # Signature not available from OpenAI format
-                )
-            )
 
-    # Add text content if present (after removing thinking tags)
-    if clean_text_content:
-        content.append(TextBlock(type="text", text=clean_text_content))
+    # Add text content if present
+    if message.content:
+        if isinstance(message.content, str):
+            content.append(TextBlock(type="text", text=message.content))
+        else:
+            for part in message.content:
+                if part.type == "text":
+                    content.append(TextBlock(type="text", text=part.text))
 
     # Convert tool calls
     if message.tool_calls:

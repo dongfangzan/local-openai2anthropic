@@ -233,193 +233,44 @@ async def _stream_response(
                         continue
                     if content_text.strip() == "(no content)":
                         continue
-
-                    # Buffer content to detect thinking tags
-                    content_buffer = pending_text_prefix + content_text
-                    pending_text_prefix = ""
-
-                    # Process content to extract thinking tags
-                    # Some models (e.g., GLM-4.7) return thinking as标签 in content
-                    while content_buffer:
-                        # Check if we have a complete thinking tag
-                        thinking_start = content_buffer.find("<think>")
-                        thinking_end = content_buffer.find("</think>")
-
-                        logger.debug(
-                            f"[Thinking Extraction] content_buffer={repr(content_buffer)}, "
-                            f"thinking_start={thinking_start}, thinking_end={thinking_end}"
-                        )
-
-                        if thinking_start == -1 and thinking_end == -1:
-                            # No thinking tags at all, emit all as text
-                            if content_buffer:
-                                if not content_block_started or current_block_type != "text":
-                                    # Close previous block if exists
-                                    if content_block_started:
-                                        stop_block = {
-                                            "type": "content_block_stop",
-                                            "index": content_block_index,
-                                        }
-                                        logger.debug(
-                                            f"[Anthropic Stream Event] content_block_stop ({current_block_type}): {json.dumps(stop_block, ensure_ascii=False)}"
-                                        )
-                                        yield f"event: content_block_stop\ndata: {json.dumps(stop_block)}\n\n"
-                                        content_block_index += 1
-                                    start_block = {
-                                        "type": "content_block_start",
-                                        "index": content_block_index,
-                                        "content_block": {"type": "text", "text": ""},
-                                    }
-                                    logger.debug(
-                                        f"[Anthropic Stream Event] content_block_start (text): {json.dumps(start_block, ensure_ascii=False)}"
-                                    )
-                                    yield f"event: content_block_start\ndata: {json.dumps(start_block)}\n\n"
-                                    content_block_started = True
-                                    current_block_type = "text"
-
-                                output_tokens += _count_tokens(content_buffer)
-                                delta_block = {
-                                    "type": "content_block_delta",
-                                    "index": content_block_index,
-                                    "delta": {"type": "text_delta", "text": content_buffer},
-                                }
-                                yield f"event: content_block_delta\ndata: {json.dumps(delta_block)}\n\n"
-                            break
-
-                        # If we have thinking_start but no thinking_end, buffer until we get complete tag
-                        if thinking_start != -1 and thinking_end == -1:
-                            # Buffer the content and wait for more
-                            pending_text_prefix = content_buffer
-                            break
-
-                        # If thinking_end comes before thinking_start (or no thinking_start), handle it
-                        if thinking_end != -1 and (thinking_start == -1 or thinking_end < thinking_start):
-                            # There's text before the thinking end tag (orphan end tag)
-                            # This shouldn't happen normally, but handle gracefully
-                            if thinking_start == -1:
-                                # No start tag but have end tag - treat as text
-                                if content_buffer[:thinking_end]:
-                                    if not content_block_started or current_block_type != "text":
-                                        if content_block_started:
-                                            stop_block = {
-                                                "type": "content_block_stop",
-                                                "index": content_block_index,
-                                            }
-                                            yield f"event: content_block_stop\ndata: {json.dumps(stop_block)}\n\n"
-                                            content_block_index += 1
-                                        start_block = {
-                                            "type": "content_block_start",
-                                            "index": content_block_index,
-                                            "content_block": {"type": "text", "text": ""},
-                                        }
-                                        yield f"event: content_block_start\ndata: {json.dumps(start_block)}\n\n"
-                                        content_block_started = True
-                                        current_block_type = "text"
-
-                                    delta_block = {
-                                        "type": "content_block_delta",
-                                        "index": content_block_index,
-                                        "delta": {"type": "text_delta", "text": content_buffer[:thinking_end]},
-                                    }
-                                    yield f"event: content_block_delta\ndata: {json.dumps(delta_block)}\n\n"
-
-                                content_buffer = content_buffer[thinking_end + len("</think>"):]
-                                continue
-
-                        # We have both start and end tags
-                        # Emit text before thinking tag as text block
-                        if thinking_start > 0:
-                            text_before = content_buffer[:thinking_start]
-                            if text_before:
-                                if not content_block_started or current_block_type != "text":
-                                    if content_block_started:
-                                        stop_block = {
-                                            "type": "content_block_stop",
-                                            "index": content_block_index,
-                                        }
-                                        logger.debug(
-                                            f"[Anthropic Stream Event] content_block_stop ({current_block_type}): {json.dumps(stop_block, ensure_ascii=False)}"
-                                        )
-                                        yield f"event: content_block_stop\ndata: {json.dumps(stop_block)}\n\n"
-                                        content_block_index += 1
-                                    start_block = {
-                                        "type": "content_block_start",
-                                        "index": content_block_index,
-                                        "content_block": {"type": "text", "text": ""},
-                                    }
-                                    logger.debug(
-                                        f"[Anthropic Stream Event] content_block_start (text): {json.dumps(start_block, ensure_ascii=False)}"
-                                    )
-                                    yield f"event: content_block_start\ndata: {json.dumps(start_block)}\n\n"
-                                    content_block_started = True
-                                    current_block_type = "text"
-
-                                output_tokens += _count_tokens(text_before)
-                                delta_block = {
-                                    "type": "content_block_delta",
-                                    "index": content_block_index,
-                                    "delta": {"type": "text_delta", "text": text_before},
-                                }
-                                yield f"event: content_block_delta\ndata: {json.dumps(delta_block)}\n\n"
-
-                        # Extract thinking content (between标签)
-                        thinking_content = content_buffer[
-                            thinking_start + len("<think>") : thinking_end
-                        ]
-                        content_buffer = content_buffer[thinking_end + len("</think>") :]
-
-                        # Close previous text block if exists
-                        if content_block_started and current_block_type == "text":
+                    if not content_block_started or current_block_type != "text":
+                        if not content_text.strip():
+                            pending_text_prefix += content_text
+                            continue
+                        # Close previous block if exists
+                        if content_block_started:
                             stop_block = {
                                 "type": "content_block_stop",
                                 "index": content_block_index,
                             }
                             logger.debug(
-                                f"[Anthropic Stream Event] content_block_stop (text): {json.dumps(stop_block, ensure_ascii=False)}"
+                                f"[Anthropic Stream Event] content_block_stop ({current_block_type}): {json.dumps(stop_block, ensure_ascii=False)}"
                             )
                             yield f"event: content_block_stop\ndata: {json.dumps(stop_block)}\n\n"
                             content_block_index += 1
-                            content_block_started = False
-
-                        # Start thinking block
                         start_block = {
                             "type": "content_block_start",
                             "index": content_block_index,
-                            "content_block": {
-                                "type": "thinking",
-                                "thinking": "",
-                                "signature": "",
-                            },
+                            "content_block": {"type": "text", "text": ""},
                         }
                         logger.debug(
-                            f"[Anthropic Stream Event] content_block_start (thinking): {json.dumps(start_block, ensure_ascii=False)}"
+                            f"[Anthropic Stream Event] content_block_start (text): {json.dumps(start_block, ensure_ascii=False)}"
                         )
                         yield f"event: content_block_start\ndata: {json.dumps(start_block)}\n\n"
                         content_block_started = True
-                        current_block_type = "thinking"
+                        current_block_type = "text"
 
-                        # Emit thinking content
-                        if thinking_content:
-                            for chunk in _chunk_text(thinking_content):
-                                delta_block = {
-                                    "type": "content_block_delta",
-                                    "index": content_block_index,
-                                    "delta": {"type": "thinking_delta", "thinking": chunk},
-                                }
-                                yield f"event: content_block_delta\ndata: {json.dumps(delta_block)}\n\n"
+                    if pending_text_prefix:
+                        content_text = pending_text_prefix + content_text
+                        pending_text_prefix = ""
 
-                        # Close thinking block
-                        stop_block = {
-                            "type": "content_block_stop",
-                            "index": content_block_index,
-                        }
-                        logger.debug(
-                            f"[Anthropic Stream Event] content_block_stop (thinking): {json.dumps(stop_block, ensure_ascii=False)}"
-                        )
-                        yield f"event: content_block_stop\ndata: {json.dumps(stop_block)}\n\n"
-                        content_block_index += 1
-                        content_block_started = False
-                        current_block_type = None
+                    output_tokens += _count_tokens(content_text)
+                    delta_block = {
+                        "type": "content_block_delta",
+                        "index": content_block_index,
+                        "delta": {"type": "text_delta", "text": content_text},
+                    }
+                    yield f"event: content_block_delta\ndata: {json.dumps(delta_block)}\n\n"
 
                 # Handle tool calls
                 if delta.get("tool_calls"):

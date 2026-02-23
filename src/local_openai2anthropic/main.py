@@ -101,7 +101,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="local-openai2anthropic",
         description="A proxy server that converts Anthropic Messages API to OpenAI API",
-        version="0.4.0",
+        version="0.5.2",
         docs_url="/docs",
         redoc_url="/redoc",
     )
@@ -253,7 +253,7 @@ Examples:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.4.0",
+        version="%(prog)s 0.5.2",
     )
 
     # Create subparsers for commands
