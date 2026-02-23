@@ -229,7 +229,8 @@ def convert_anthropic_to_openai(
     # Handle thinking parameter
     # vLLM/SGLang use chat_template_kwargs.thinking to toggle thinking mode
     # Some models use "thinking", others use "enable_thinking", so we include both
-    # clear_thinking: false keeps the thinking content in the conversation history
+    # TODO: Support for multi-turn thinking conversation history
+    # See issue: https://github.com/dongfangzan/local-openai2anthropic/issues/2
     if thinking and isinstance(thinking, dict):
         thinking_type = thinking.get("type")
         if thinking_type == "enabled":
@@ -237,7 +238,6 @@ def convert_anthropic_to_openai(
             params["chat_template_kwargs"] = {
                 "thinking": True,
                 "enable_thinking": True,
-                "clear_thinking": False,
             }
 
             # Log if budget_tokens was provided but will be ignored
@@ -253,7 +253,6 @@ def convert_anthropic_to_openai(
             params["chat_template_kwargs"] = {
                 "thinking": True,
                 "enable_thinking": True,
-                "clear_thinking": False,
             }
         else:
             # Default to disabled thinking mode if not explicitly enabled
@@ -294,7 +293,6 @@ def _convert_anthropic_message_to_openai(
     openai_content: list[dict[str, Any]] = []
     tool_calls: list[dict[str, Any]] = []
     tool_call_results: list[dict[str, Any]] = []
-    reasoning_content: str = ""
 
     for block in content:
         if isinstance(block, str):
@@ -307,11 +305,11 @@ def _convert_anthropic_message_to_openai(
             text = block.get("text") if isinstance(block, dict) else block.text
             openai_content.append({"type": "text", "text": text})
 
-        elif block_type == "thinking":
-            # Extract thinking content to pass as reasoning_content in OpenAI format
-            thinking = block.get("thinking") if isinstance(block, dict) else block.thinking
-            if thinking:
-                reasoning_content += thinking
+        # TODO: Support for multi-turn thinking conversation history
+        # See issue: https://github.com/dongfangzan/local-openai2anthropic/issues/2
+        # elif block_type == "thinking":
+        #     # Thinking blocks are currently ignored in conversion
+        #     # Future: extract and pass as reasoning_content to preserve conversation history
 
         elif block_type == "image":
             # Convert image to image_url format
@@ -407,10 +405,6 @@ def _convert_anthropic_message_to_openai(
 
     if tool_calls:
         primary_msg["tool_calls"] = tool_calls
-
-    # Add reasoning_content if thinking block was present
-    if reasoning_content:
-        primary_msg["reasoning_content"] = reasoning_content
 
     messages.append(primary_msg)
 
