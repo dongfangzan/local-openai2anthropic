@@ -21,7 +21,7 @@ This proxy translates Claude SDK calls to OpenAI API format in real-time, enabli
 - **Privacy-first AI** - data never leaves your machine
 - **Seamless model switching** between cloud and local
 - **Web Search tool** - built-in Tavily web search for local models
-
+- **Interleaved thinking** - Supports reasoning/thinking content with `<think>` markers in multi-turn conversations
 ---
 
 ## Supported Local Backends
@@ -331,7 +331,7 @@ oa2a stop
 - ✅ **Tool calling** - Local LLM function calling support
 - ✅ **Vision models** - Multi-modal input for vision-capable models
 - ✅ **Web Search** - Built-in Tavily web search for local models
-- ✅ **Interleaved thinking** - Supports reasoning/thinking content with `  拔` markers in multi-turn conversations
+- ✅ **Interleaved thinking** - Supports reasoning/thinking content with `<think>` markers in multi-turn conversations
 
 ---
 
