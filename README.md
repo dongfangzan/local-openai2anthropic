@@ -331,7 +331,7 @@ oa2a stop
 - ✅ **Tool calling** - Local LLM function calling support
 - ✅ **Vision models** - Multi-modal input for vision-capable models
 - ✅ **Web Search** - Built-in Tavily web search for local models
-- ✅ **Thinking mode** - Supports reasoning/thinking model outputs
+- ✅ **Interleaved thinking** - Supports reasoning/thinking content with `  拔` markers in multi-turn conversations
 
 ---
 
