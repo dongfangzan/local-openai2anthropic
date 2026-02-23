@@ -274,9 +274,9 @@ Examples:
     )
     start_parser.add_argument(
         "--log-level",
-        default="info",
+        default=None,
         choices=["debug", "info", "warning", "error"],
-        help="Logging level (default: info)",
+        help="Logging level (default: from config file)",
     )
 
     # stop command
@@ -302,9 +302,9 @@ Examples:
     )
     restart_parser.add_argument(
         "--log-level",
-        default="info",
+        default=None,
         choices=["debug", "info", "warning", "error"],
-        help="Logging level (default: info)",
+        help="Logging level (default: from config file)",
     )
 
     # status command

@@ -10,7 +10,7 @@ from typing import Any, cast
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from local_openai2anthropic.config import Settings, get_settings
 from local_openai2anthropic.converter import (
@@ -425,7 +425,7 @@ async def health_check() -> dict[str, str]:
 
 
 @router.post("/api/event_logging/batch")
-async def event_logging_batch(request: Request) -> JSONResponse:
+async def event_logging_batch(request: Request) -> Response:
     """
     Event logging endpoint placeholder.
     Returns 204 No Content to acknowledge receipt without processing.
@@ -438,4 +438,4 @@ async def event_logging_batch(request: Request) -> JSONResponse:
     except Exception as e:
         logger.info(f"[Event Logging] Failed to parse body: {e}")
 
-    return JSONResponse(status_code=204, content={})
+    return Response(status_code=204)
