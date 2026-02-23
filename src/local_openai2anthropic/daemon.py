@@ -326,7 +326,7 @@ def stop_daemon(force: bool = False) -> bool:
 def restart_daemon(
     host: str = "0.0.0.0",
     port: int = 8080,
-    log_level: str = "info",
+    log_level: str | None = None,
 ) -> bool:
     """
     Restart the background daemon.
