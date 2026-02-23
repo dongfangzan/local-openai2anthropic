@@ -16,6 +16,7 @@ from local_openai2anthropic.converter import (
     _strip_claude_billing_header,
     convert_anthropic_to_openai,
     convert_openai_to_anthropic,
+    _convert_anthropic_message_to_openai,
 )
 from local_openai2anthropic.protocol import UsageWithCache
 
@@ -424,6 +425,102 @@ class TestOpenAIToAnthropic:
         assert usage.output_tokens == 50
         assert usage.cache_creation_input_tokens == 200
         assert usage.cache_read_input_tokens == 300
+
+
+class TestThinkingBlockConversion:
+    """Tests for thinking block conversion to OpenAI format."""
+
+    def test_thinking_block_extraction(self):
+        """Test that thinking block is extracted correctly."""
+        msg = {
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "User greeted me in Chinese.", "signature": ""},
+                {"type": "text", "text": "Hello! I'm Claude Code."},
+            ],
+        }
+
+        result, has_thinking = _convert_anthropic_message_to_openai(msg)
+
+        assert has_thinking is True
+        assert result[0]["role"] == "assistant"
+        # Content should contain thinking markers
+        assert "<think>" in result[0]["content"]
+        assert "User greeted me in Chinese." in result[0]["content"]
+        assert "Hello! I'm Claude Code." in result[0]["content"]
+
+    def test_thinking_block_with_tool_use_block(self):
+        """Test thinking block combined with tool_use block in content."""
+        msg = {
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "I need to search for weather.", "signature": ""},
+                {"type": "text", "text": "Let me check the weather for you."},
+                {"type": "tool_use", "id": "tool_1", "name": "web_search", "input": {"query": "weather"}},
+            ],
+        }
+
+        result, has_thinking = _convert_anthropic_message_to_openai(msg)
+
+        assert has_thinking is True
+        assert "tool_calls" in result[0]
+        assert result[0]["tool_calls"][0]["function"]["name"] == "web_search"
+        assert "<think>" in result[0]["content"]
+
+    def test_no_thinking_block(self):
+        """Test message without thinking block."""
+        msg = {
+            "role": "user",
+            "content": [{"type": "text", "text": "Hello!"}],
+        }
+
+        result, has_thinking = _convert_anthropic_message_to_openai(msg)
+
+        assert has_thinking is False
+        assert result[0]["content"] == "Hello!"
+
+    def test_multiple_text_blocks_with_thinking(self):
+        """Test multiple text blocks with thinking block."""
+        msg = {
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "thinking": "This is my thinking.", "signature": ""},
+                {"type": "text", "text": "First part."},
+                {"type": "text", "text": "Second part."},
+            ],
+        }
+
+        result, has_thinking = _convert_anthropic_message_to_openai(msg)
+
+        assert has_thinking is True
+        assert "<think>" in result[0]["content"]
+        assert "This is my thinking." in result[0]["content"]
+        assert "First part." in result[0]["content"]
+        assert "Second part." in result[0]["content"]
+
+    def test_thinking_block_string_content(self):
+        """Test thinking block with string content (edge case)."""
+        msg = {
+            "role": "assistant",
+            "content": "Just a simple text response",
+        }
+
+        result, has_thinking = _convert_anthropic_message_to_openai(msg)
+
+        assert has_thinking is False
+        assert result[0]["content"] == "Just a simple text response"
+
+    def test_thinking_block_empty_content(self):
+        """Test thinking block with empty content list."""
+        msg = {
+            "role": "assistant",
+            "content": [],
+        }
+
+        result, has_thinking = _convert_anthropic_message_to_openai(msg)
+
+        assert has_thinking is False
+        assert result[0]["content"] == ""
 
 
 if __name__ == "__main__":

@@ -39,6 +39,7 @@ from local_openai2anthropic.utils import (
 )
 
 logger = logging.getLogger(__name__)
+api_logger = logging.getLogger("api")
 router = APIRouter()
 
 # Backward compatibility: re-export functions used by tests
@@ -99,6 +100,8 @@ async def create_message(
         logger.debug(
             f"[Anthropic Request] {json.dumps(body_json, ensure_ascii=False, indent=2)}"
         )
+        # Log to dedicated API log file (clean format, no timestamp prefix)
+        api_logger.debug(f"[Anthropic Request] {json.dumps(body_json, ensure_ascii=False)}")
         anthropic_params = body_json
     except json.JSONDecodeError as e:
         logger.error(f"Invalid JSON in request body: {e}")
@@ -173,6 +176,8 @@ async def create_message(
     logger.debug(
         f"[OpenAI Request] {json.dumps(log_params, ensure_ascii=False, indent=2)}"
     )
+    # Log to dedicated API log file (clean format)
+    api_logger.debug(f"[OpenAI Request] {json.dumps(log_params, ensure_ascii=False)}")
 
     stream = openai_params.get("stream", False)
     model = openai_params.get("model", "")

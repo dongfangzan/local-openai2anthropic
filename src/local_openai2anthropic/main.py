@@ -53,6 +53,7 @@ def setup_logging(log_level: str, log_dir: str | None = None) -> None:
     Path(log_dir).mkdir(parents=True, exist_ok=True)
 
     log_file = os.path.join(log_dir, "server.log")
+    api_log_file = os.path.join(log_dir, "api.log")
 
     # Create formatter
     formatter = logging.Formatter(
@@ -72,19 +73,36 @@ def setup_logging(log_level: str, log_dir: str | None = None) -> None:
     root_logger.addHandler(console_handler)
 
     # File handler with daily rotation
-    # backupCount=0 means no backup files are kept (only today's log)
+    # backupCount=1 means keep today's log + 1 backup (2 days total)
     # when='midnight' rotates at midnight
     file_handler = TimedRotatingFileHandler(
         log_file,
         when='midnight',
         interval=1,
-        backupCount=0,  # Keep only today's log
+        backupCount=1,  # Keep 2 days of logs
         encoding='utf-8'
     )
     file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
 
-    logging.info(f"Logging configured. Log file: {log_file}")
+    # API log handler - dedicated file for API request/response logging
+    api_handler = TimedRotatingFileHandler(
+        api_log_file,
+        when='midnight',
+        interval=1,
+        backupCount=1,  # Keep 2 days of logs
+        encoding='utf-8'
+    )
+    api_handler.setFormatter(logging.Formatter("%(message)s"))
+    api_handler.setLevel(getattr(logging, log_level.upper()))
+
+    # Create dedicated API logger
+    api_logger = logging.getLogger("api")
+    api_logger.setLevel(getattr(logging, log_level.upper()))
+    api_logger.addHandler(api_handler)
+    api_logger.propagate = False  # Don't propagate to root logger
+
+    logging.info(f"Logging configured. Log file: {log_file}, API log: {api_log_file}")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -101,7 +119,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="local-openai2anthropic",
         description="A proxy server that converts Anthropic Messages API to OpenAI API",
-        version="0.5.4",
+        version="0.5.5",
         docs_url="/docs",
         redoc_url="/redoc",
     )
@@ -253,7 +271,7 @@ Examples:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.5.4",
+        version="%(prog)s 0.5.5",
     )
 
     # Create subparsers for commands

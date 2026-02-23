@@ -114,7 +114,7 @@ class TestConvertAnthropicMessageEdgeCases:
             ],
         }
 
-        result = _convert_anthropic_message_to_openai(msg)
+        result, _ = _convert_anthropic_message_to_openai(msg)
 
         assert len(result) == 1
         assert result[0]["content"][0]["type"] == "image_url"
@@ -134,7 +134,7 @@ class TestConvertAnthropicMessageEdgeCases:
             ],
         }
 
-        result = _convert_anthropic_message_to_openai(msg)
+        result, _ = _convert_anthropic_message_to_openai(msg)
 
         assert "data:image/jpeg;base64,base64data" in result[0]["content"][0]["image_url"]["url"]
 
@@ -152,7 +152,7 @@ class TestConvertAnthropicMessageEdgeCases:
             ],
         }
 
-        result = _convert_anthropic_message_to_openai(msg)
+        result, _ = _convert_anthropic_message_to_openai(msg)
 
         assert len(result) == 1
         assert result[0]["role"] == "assistant"
@@ -169,7 +169,7 @@ class TestConvertAnthropicMessageEdgeCases:
             "content": "The weather is sunny.",
         }
 
-        result = _convert_anthropic_message_to_openai({"role": "user", "content": [msg_param]})
+        result, _ = _convert_anthropic_message_to_openai({"role": "user", "content": [msg_param]})
 
         # Tool results create a separate message, so we have 2 messages
         assert len(result) == 2
@@ -189,7 +189,7 @@ class TestConvertAnthropicMessageEdgeCases:
             ],
         }
 
-        result = _convert_anthropic_message_to_openai({"role": "user", "content": [msg_param]})
+        result, _ = _convert_anthropic_message_to_openai({"role": "user", "content": [msg_param]})
 
         # Tool result is in the second message
         assert result[1]["content"] == "Result 1\nResult 2"
@@ -205,7 +205,7 @@ class TestConvertAnthropicMessageEdgeCases:
             ],
         }
 
-        result = _convert_anthropic_message_to_openai({"role": "user", "content": [msg_param]})
+        result, _ = _convert_anthropic_message_to_openai({"role": "user", "content": [msg_param]})
 
         # Tool result is in the second message
         assert "[Image content]" in result[1]["content"]
@@ -220,7 +220,7 @@ class TestConvertAnthropicMessageEdgeCases:
             ],
         }
 
-        result = _convert_anthropic_message_to_openai(msg)
+        result, _ = _convert_anthropic_message_to_openai(msg)
 
         assert len(result[0]["content"]) == 2
         assert result[0]["content"][0]["text"] == "Hello"
@@ -233,7 +233,7 @@ class TestConvertAnthropicMessageEdgeCases:
             "content": ["Hello", "World"],
         }
 
-        result = _convert_anthropic_message_to_openai(msg)
+        result, _ = _convert_anthropic_message_to_openai(msg)
 
         assert result[0]["content"][0]["type"] == "text"
         assert result[0]["content"][0]["text"] == "Hello"
@@ -245,7 +245,7 @@ class TestConvertAnthropicMessageEdgeCases:
             "content": [],
         }
 
-        result = _convert_anthropic_message_to_openai(msg)
+        result, _ = _convert_anthropic_message_to_openai(msg)
 
         assert result[0]["content"] == ""
 
@@ -264,7 +264,7 @@ class TestConvertAnthropicMessageEdgeCases:
             ],
         }
 
-        result = _convert_anthropic_message_to_openai(assistant_msg)
+        result, _ = _convert_anthropic_message_to_openai(assistant_msg)
 
         assert result[0]["role"] == "assistant"
         assert "tool_calls" in result[0]
