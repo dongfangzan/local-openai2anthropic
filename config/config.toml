@@ -1,0 +1,32 @@
+# OA2A Configuration File
+# Place this file at ~/.oa2a/config.toml
+
+# OpenAI API Configuration
+openai_api_key = "sk-2ckXqb66cq4BjowY1e70Ed6c900745F3A8B2712b9551F9E2"
+openai_base_url = "https://ai-test-if.wchscu.cn/v1"
+openai_org_id = ""
+openai_project_id = ""
+
+# Server Configuration
+host = "0.0.0.0"
+port = 8080
+request_timeout = 300.0
+
+# API Key for authenticating requests to this server (optional)
+api_key = ""
+
+# CORS settings
+cors_origins = ["*"]
+cors_credentials = true
+cors_methods = ["*"]
+cors_headers = ["*"]
+
+# Logging
+log_level = "INFO"
+log_dir = ""  # Empty uses platform-specific default
+
+# Tavily Web Search Configuration
+tavily_api_key = "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"
+tavily_timeout = 30.0
+tavily_max_results = 5
+websearch_max_uses = 5

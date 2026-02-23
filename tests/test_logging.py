@@ -245,10 +245,15 @@ class TestLoggingIntegration:
 class TestLoggingConfiguration:
     """Tests for logging configuration."""
 
-    def test_config_default_log_level(self):
+    def test_config_default_log_level(self, monkeypatch):
         """Test default log level in config."""
         from local_openai2anthropic.config import Settings
 
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.load_config_from_file",
+            lambda: {},
+        )
+        monkeypatch.delenv("OA2A_LOG_LEVEL", raising=False)
         settings = Settings()
         assert settings.log_level.upper() == "INFO"
 

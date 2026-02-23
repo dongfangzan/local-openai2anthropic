@@ -8,7 +8,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 def get_config_dir() -> Path:
@@ -235,40 +236,49 @@ def load_config_from_file() -> dict:
         return tomllib.load(f)
 
 
-class Settings(BaseModel):
-    """Application settings loaded from config file."""
+class Settings(BaseSettings):
+    """Application settings loaded from config file and environment variables.
+    
+    Environment variables take precedence over config file values.
+    Prefix all env vars with OA2A_ (e.g., OA2A_OPENAI_API_KEY).
+    """
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = SettingsConfigDict(
+        extra="ignore",
+        env_prefix="OA2A_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+    )
 
     # OpenAI API Configuration
-    openai_api_key: Optional[str] = None
-    openai_base_url: str = "https://api.openai.com/v1"
-    openai_org_id: Optional[str] = None
-    openai_project_id: Optional[str] = None
+    openai_api_key: Optional[str] = Field(default=None, description="OpenAI API key")
+    openai_base_url: str = Field(default="https://api.openai.com/v1", description="OpenAI base URL")
+    openai_org_id: Optional[str] = Field(default=None, description="OpenAI organization ID")
+    openai_project_id: Optional[str] = Field(default=None, description="OpenAI project ID")
 
     # Server Configuration
-    host: str = "0.0.0.0"
-    port: int = 8080
-    request_timeout: float = 300.0  # 5 minutes
+    host: str = Field(default="0.0.0.0", description="Server host")
+    port: int = Field(default=8080, description="Server port")
+    request_timeout: float = Field(default=300.0, description="Request timeout in seconds")
 
     # API Key for authenticating requests to this server (optional)
-    api_key: Optional[str] = None
+    api_key: Optional[str] = Field(default=None, description="API key for server authentication")
 
     # CORS settings
-    cors_origins: list[str] = ["*"]
-    cors_credentials: bool = True
-    cors_methods: list[str] = ["*"]
-    cors_headers: list[str] = ["*"]
+    cors_origins: list[str] = Field(default=["*"], description="Allowed CORS origins")
+    cors_credentials: bool = Field(default=True, description="Allow CORS credentials")
+    cors_methods: list[str] = Field(default=["*"], description="Allowed CORS methods")
+    cors_headers: list[str] = Field(default=["*"], description="Allowed CORS headers")
 
     # Logging
-    log_level: str = "INFO"
-    log_dir: str = ""  # Empty means use platform-specific default
+    log_level: str = Field(default="INFO", description="Log level (DEBUG, INFO, WARNING, ERROR)")
+    log_dir: str = Field(default="", description="Log directory (empty for platform default)")
 
     # Tavily Web Search Configuration
-    tavily_api_key: Optional[str] = None
-    tavily_timeout: float = 30.0
-    tavily_max_results: int = 5
-    websearch_max_uses: int = 5  # Default max_uses per request
+    tavily_api_key: Optional[str] = Field(default=None, description="Tavily API key for web search")
+    tavily_timeout: float = Field(default=30.0, description="Tavily API timeout")
+    tavily_max_results: int = Field(default=5, description="Max Tavily search results")
+    websearch_max_uses: int = Field(default=5, description="Max web search uses per request")
 
     @property
     def openai_auth_headers(self) -> dict[str, str]:
@@ -292,6 +302,43 @@ class Settings(BaseModel):
         config_data = load_config_from_file()
         return cls(**config_data)
 
+    @classmethod
+    def from_config(cls) -> "Settings":
+        """Load settings from config file with environment variable override.
+        
+        Environment variables (with OA2A_ prefix) take precedence over config file values.
+        pydantic-settings automatically reads environment variables.
+        
+        Returns:
+            Settings instance populated from config file and env vars
+        """
+        import os
+        
+        # pydantic-settings reads environment variables automatically
+        # We need to check if env vars are set, and only use config file as fallback
+        config_data = load_config_from_file()
+        
+        # Build kwargs from config file, but only for fields not set via env var
+        # pydantic-settings uses env_prefix, so we check OA2A_* vars
+        kwargs = {}
+        env_prefix = "OA2A_"
+        
+        for key, value in config_data.items():
+            # Skip empty values
+            if value in (None, ""):
+                continue
+            
+            # Check if corresponding env var is set
+            env_var_name = env_prefix + key.upper()
+            if os.environ.get(env_var_name) is not None:
+                # Env var is set, skip config file value
+                continue
+            
+            # No env var, use config file value
+            kwargs[key] = value
+        
+        return cls(**kwargs)
+
 
 def is_interactive() -> bool:
     """Check if running in an interactive terminal.
@@ -308,9 +355,11 @@ def get_settings() -> Settings:
 
     Creates config file interactively if it doesn't exist and running in a TTY.
     Falls back to creating a default config file in non-interactive environments.
+    
+    Environment variables (with OA2A_ prefix) take precedence over config file values.
 
     Returns:
-        Settings instance loaded from config file
+        Settings instance loaded from config file and environment variables
     """
     config_file = get_config_file()
     if not config_file.exists():
@@ -325,4 +374,4 @@ def get_settings() -> Settings:
             create_default_config()
             print(f"Created default config file: {config_file}")
             print("Please edit it to add your API keys and settings.")
-    return Settings.from_toml()
+    return Settings.from_config()
