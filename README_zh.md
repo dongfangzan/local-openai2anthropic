@@ -39,7 +39,134 @@
 
 ## 快速开始
 
-### 1. 安装
+### 方式一：Docker 部署（生产环境推荐）
+
+#### 使用 Docker Hub 镜像（无需构建）
+
+直接拉取并运行官方镜像：
+
+```bash
+# 创建 .env 文件
+cat > .env << 'EOF'
+OA2A_OPENAI_API_KEY=your-openai-api-key
+OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1
+OA2A_PORT=8080
+EOF
+
+# 使用 docker run 运行
+docker run -d \
+  --name oa2a \
+  --env-file .env \
+  -p 8080:8080 \
+  --restart unless-stopped \
+  dongfangzan/local-openai2anthropic:latest
+
+# 或使用 docker-compose（参考仓库中的 docker-compose.yml）
+docker-compose up -d
+```
+
+可用标签：
+- `latest` - 最新稳定版本
+- `0.4.0`, `0.4`, `0` - 特定版本标签
+- `main` - 最新开发版本
+
+#### 从源码构建
+
+如果你想自己构建镜像：
+
+```bash
+# 克隆仓库
+git clone https://github.com/dongfangzan/local-openai2anthropic.git
+cd local-openai2anthropic
+
+# 创建 .env 配置文件
+cat > .env << 'EOF'
+OA2A_OPENAI_API_KEY=your-openai-api-key
+OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1
+OA2A_PORT=8080
+EOF
+
+# 使用 Docker Compose 构建并启动
+docker-compose up -d --build
+```
+
+**Docker 环境变量：**
+
+| 变量 | 必需 | 默认值 | 说明 |
+|----------|----------|---------|-------------|
+| `OA2A_OPENAI_API_KEY` | ✅ | - | OpenAI API 密钥 |
+| `OA2A_OPENAI_BASE_URL` | ✅ | - | 本地 LLM 端点 |
+| `OA2A_HOST` | ❌ | 0.0.0.0 | 服务器主机 |
+| `OA2A_PORT` | ❌ | 8080 | 服务器端口 |
+| `OA2A_API_KEY` | ❌ | - | 代理认证密钥 |
+| `OA2A_LOG_LEVEL` | ❌ | INFO | DEBUG、INFO、WARNING、ERROR |
+| `OA2A_TAVILY_API_KEY` | ❌ | - | 启用网页搜索 |
+| `OA2A_CORS_ORIGINS` | ❌ | * | 允许的 CORS 来源 |
+
+#### Docker Compose 部署
+
+使用 Docker Compose 进行完整配置部署：
+
+```bash
+# 克隆仓库
+git clone https://github.com/dongfangzan/local-openai2anthropic.git
+cd local-openai2anthropic
+
+# 使用环境变量启动
+OA2A_OPENAI_API_KEY=your-api-key \
+OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1 \
+docker-compose up -d
+```
+
+**配置方式**（选择一种）：
+
+1. **直接编辑 docker-compose.yml**（最简单，无需环境变量）：
+   ```yaml
+   environment:
+     - OA2A_OPENAI_API_KEY=你的实际API密钥
+     - OA2A_OPENAI_BASE_URL=http://localhost:8000/v1
+     - OA2A_TAVILY_API_KEY=tvly-your-key  # 可选
+   ```
+
+2. **Shell 环境变量**：
+   ```bash
+   export OA2A_OPENAI_API_KEY=your-api-key
+   export OA2A_OPENAI_BASE_URL=http://localhost:8000/v1
+   docker-compose up -d
+   ```
+
+3. **.env 文件**：
+   ```bash
+   cp .env.example .env
+   # 编辑 .env，然后：docker-compose up -d
+   ```
+
+4. **配置文件挂载**：
+   ```bash
+   mkdir -p config && cp ~/.oa2a/config.toml config/
+   # 取消注释 docker-compose.yml 中的 volumes 部分
+   docker-compose up -d
+   ```
+
+**Docker 常用命令：**
+
+```bash
+# 构建并启动
+docker-compose up -d
+
+# 查看日志
+docker-compose logs -f
+
+# 停止
+docker-compose down
+
+# 代码变更后重新构建
+docker-compose up -d --build
+```
+
+### 方式二：pip 安装
+
+#### 1. 安装
 
 ```bash
 pip install local-openai2anthropic

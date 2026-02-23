@@ -39,7 +39,134 @@ Other OpenAI-compatible backends may work but are not fully tested.
 
 ## Quick Start
 
-### 1. Install
+### Option 1: Docker Deployment (Recommended for Production)
+
+#### Quick Start with Docker Hub (No Build Required)
+
+Pull and run the official image directly:
+
+```bash
+# Create .env file
+cat > .env << 'EOF'
+OA2A_OPENAI_API_KEY=your-openai-api-key
+OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1
+OA2A_PORT=8080
+EOF
+
+# Run with docker run
+docker run -d \
+  --name oa2a \
+  --env-file .env \
+  -p 8080:8080 \
+  --restart unless-stopped \
+  dongfangzan/local-openai2anthropic:latest
+
+# Or use docker-compose (see docker-compose.yml in repo)
+docker-compose up -d
+```
+
+Available tags:
+- `latest` - Latest stable release
+- `0.4.0`, `0.4`, `0` - Version-specific tags
+- `main` - Latest development build
+
+#### Build from Source
+
+If you prefer to build the image yourself:
+
+```bash
+# Clone the repository
+git clone https://github.com/dongfangzan/local-openai2anthropic.git
+cd local-openai2anthropic
+
+# Create .env file with your configuration
+cat > .env << 'EOF'
+OA2A_OPENAI_API_KEY=your-openai-api-key
+OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1
+OA2A_PORT=8080
+EOF
+
+# Build and start with Docker Compose
+docker-compose up -d --build
+```
+
+**Docker Environment Variables:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `OA2A_OPENAI_API_KEY` | ✅ | - | OpenAI API key |
+| `OA2A_OPENAI_BASE_URL` | ✅ | - | Local LLM endpoint |
+| `OA2A_HOST` | ❌ | 0.0.0.0 | Server host |
+| `OA2A_PORT` | ❌ | 8080 | Server port |
+| `OA2A_API_KEY` | ❌ | - | Auth key for proxy |
+| `OA2A_LOG_LEVEL` | ❌ | INFO | DEBUG, INFO, WARNING, ERROR |
+| `OA2A_TAVILY_API_KEY` | ❌ | - | Enable web search |
+| `OA2A_CORS_ORIGINS` | ❌ | * | Allowed CORS origins |
+
+#### Docker Compose Deployment
+
+The easiest way to deploy with full configuration support:
+
+```bash
+# Clone the repository
+git clone https://github.com/dongfangzan/local-openai2anthropic.git
+cd local-openai2anthropic
+
+# Start with environment variables
+OA2A_OPENAI_API_KEY=your-api-key \
+OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1 \
+docker-compose up -d
+```
+
+**Configuration Methods** (choose one):
+
+1. **Directly Edit docker-compose.yml** (simplest, no env vars needed):
+   ```yaml
+   environment:
+     - OA2A_OPENAI_API_KEY=your-actual-api-key
+     - OA2A_OPENAI_BASE_URL=http://localhost:8000/v1
+     - OA2A_TAVILY_API_KEY=tvly-your-key  # optional
+   ```
+
+2. **Shell Environment Variables**:
+   ```bash
+   export OA2A_OPENAI_API_KEY=your-api-key
+   export OA2A_OPENAI_BASE_URL=http://localhost:8000/v1
+   docker-compose up -d
+   ```
+
+3. **.env File**:
+   ```bash
+   cp .env.example .env
+   # Edit .env, then: docker-compose up -d
+   ```
+
+4. **Config File Mount**:
+   ```bash
+   mkdir -p config && cp ~/.oa2a/config.toml config/
+   # Uncomment volumes section in docker-compose.yml
+   docker-compose up -d
+   ```
+
+**Docker Commands:**
+
+```bash
+# Build and start
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop
+docker-compose down
+
+# Rebuild after code changes
+docker-compose up -d --build
+```
+
+### Option 2: pip Installation
+
+#### 1. Install
 
 ```bash
 pip install local-openai2anthropic

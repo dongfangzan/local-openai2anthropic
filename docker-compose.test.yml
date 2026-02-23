@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+# local-openai2anthropic Docker Compose Test Configuration
+
+services:
+  oa2a:
+    image: local-openai2anthropic:test-fixed
+    container_name: local-openai2anthropic-test
+    ports:
+      - "54322:8080"
+    volumes:
+      # Mount config file from local
+      - ./config/config.toml:/root/.oa2a/config.toml:ro
+      # Mount logs directory
+      - ./logs:/root/.local/share/local-openai2anthropic/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - oa2a-network
+
+networks:
+  oa2a-network:
+    driver: bridge

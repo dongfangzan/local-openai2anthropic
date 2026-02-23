@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: Apache-2.0
+# local-openai2anthropic Docker Compose Configuration
+
+services:
+  oa2a:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: local-openai2anthropic
+    ports:
+      - "${OA2A_PORT:-8080}:8080"
+    environment:
+      # Required: OpenAI API configuration
+      - OA2A_OPENAI_API_KEY=${OA2A_OPENAI_API_KEY:-}
+      - OA2A_OPENAI_BASE_URL=${OA2A_OPENAI_BASE_URL:-http://host.docker.internal:8000/v1}
+      
+      # Optional: Server configuration
+      - OA2A_HOST=${OA2A_HOST:-0.0.0.0}
+      - OA2A_PORT=${OA2A_PORT:-8080}
+      - OA2A_API_KEY=${OA2A_API_KEY:-}
+      - OA2A_LOG_LEVEL=${OA2A_LOG_LEVEL:-INFO}
+      
+      # Optional: Tavily web search
+      - OA2A_TAVILY_API_KEY=${OA2A_TAVILY_API_KEY:-}
+      - OA2A_TAVILY_MAX_RESULTS=${OA2A_TAVILY_MAX_RESULTS:-5}
+      - OA2A_TAVILY_TIMEOUT=${OA2A_TAVILY_TIMEOUT:-30}
+      - OA2A_WEBSEARCH_MAX_USES=${OA2A_WEBSEARCH_MAX_USES:-5}
+      
+      # Optional: CORS settings
+      - OA2A_CORS_ORIGINS=${OA2A_CORS_ORIGINS:-*}
+      - OA2A_CORS_CREDENTIALS=${OA2A_CORS_CREDENTIALS:-true}
+      - OA2A_CORS_METHODS=${OA2A_CORS_METHODS:-*}
+      - OA2A_CORS_HEADERS=${OA2A_CORS_HEADERS:-*}
+    volumes:
+      # Optional: Mount a custom config file
+      - ./config:/app/config:ro
+      # Optional: Mount logs directory
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - oa2a-network
+
+networks:
+  oa2a-network:
+    driver: bridge

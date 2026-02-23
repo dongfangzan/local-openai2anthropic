@@ -171,6 +171,16 @@ class TestSettings:
         monkeypatch.setattr(
             "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
         )
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.load_config_from_file",
+            lambda: {
+                "openai_api_key": "test-key",
+                "host": "127.0.0.1",
+                "port": 9000,
+            },
+        )
+        # Override env var to prevent pydantic-settings from using .env value
+        monkeypatch.setenv("OA2A_OPENAI_BASE_URL", "https://api.openai.com/v1")
 
         # Create config with custom values
         config_dir = tmp_path / ".oa2a"
@@ -194,6 +204,12 @@ port = 9000
         monkeypatch.setattr(
             "local_openai2anthropic.config.get_config_dir", lambda: tmp_path / ".oa2a"
         )
+        monkeypatch.setattr(
+            "local_openai2anthropic.config.load_config_from_file",
+            lambda: {},
+        )
+        # Override env var to prevent pydantic-settings from using .env value
+        monkeypatch.setenv("OA2A_OPENAI_BASE_URL", "https://api.openai.com/v1")
 
         # Create empty config file
         config_dir = tmp_path / ".oa2a"
