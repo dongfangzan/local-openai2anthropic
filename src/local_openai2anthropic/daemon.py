@@ -147,7 +147,7 @@ def get_status() -> tuple[bool, Optional[int], Optional[dict]]:
 def start_daemon(
     host: str = "0.0.0.0",
     port: int = 8080,
-    log_level: str = "info",
+    log_level: str | None = None,
 ) -> bool:
     """
     Start the server as a background daemon.
@@ -185,7 +185,9 @@ def start_daemon(
     env = os.environ.copy()
     env["OA2A_HOST"] = host
     env["OA2A_PORT"] = str(port)
-    env["OA2A_LOG_LEVEL"] = log_level.upper()
+    # Only set log level if explicitly specified, otherwise use config file value
+    if log_level is not None:
+        env["OA2A_LOG_LEVEL"] = log_level.upper()
 
     cmd = [
         sys.executable,

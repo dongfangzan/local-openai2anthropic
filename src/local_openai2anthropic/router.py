@@ -422,3 +422,20 @@ async def count_tokens(
 async def health_check() -> dict[str, str]:
     """Health check endpoint."""
     return {"status": "healthy"}
+
+
+@router.post("/api/event_logging/batch")
+async def event_logging_batch(request: Request) -> JSONResponse:
+    """
+    Event logging endpoint placeholder.
+    Returns 204 No Content to acknowledge receipt without processing.
+    Some clients (e.g., Claude Desktop) may send analytics events here.
+    """
+    try:
+        body_bytes = await request.body()
+        body_json = json.loads(body_bytes.decode("utf-8"))
+        logger.info(f"[Event Logging] {json.dumps(body_json, ensure_ascii=False, indent=2)}")
+    except Exception as e:
+        logger.info(f"[Event Logging] Failed to parse body: {e}")
+
+    return JSONResponse(status_code=204, content={})

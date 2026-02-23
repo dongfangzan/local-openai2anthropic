@@ -1,6 +1,6 @@
 [project]
 name = "local-openai2anthropic"
-version = "0.5.3"
+version = "0.5.4"
 description = "A lightweight proxy server that converts Anthropic Messages API to OpenAI API"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -30,6 +30,7 @@ dependencies = [
     "anthropic>=0.30.0",
     "openai>=1.30.0",
     "tomli-w>=1.0.0",
+    "tiktoken>=0.7.0",
 ]
 
 [project.optional-dependencies]
