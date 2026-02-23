@@ -65,3 +65,7 @@ Thumbs.db
 # Local config files with secrets
 config.local.toml
 *.local.toml
+
+# Git worktrees
+.worktrees/
+worktrees/
