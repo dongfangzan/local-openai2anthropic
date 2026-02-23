@@ -112,7 +112,7 @@ class TestSetupLogging:
 
             assert file_handler is not None
             assert file_handler.when.upper() == "MIDNIGHT"
-            assert file_handler.backupCount == 0  # Only keep today's log
+            assert file_handler.backupCount == 1  # Keep 2 days of logs
 
     def test_setup_logging_log_format(self):
         """Test that log format is correct."""

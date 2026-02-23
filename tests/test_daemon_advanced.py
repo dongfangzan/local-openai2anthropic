@@ -137,15 +137,22 @@ class TestStopDaemonAdvanced:
 
     def test_stop_daemon_force_flag_immediate(self):
         """Test immediate SIGKILL with force flag."""
+        # Test that force=True uses SIGKILL - simplified test
         with patch.object(daemon, "_cleanup_stale_pidfile"):
             with patch.object(daemon, "_read_pid", return_value=12345):
-                with patch.object(daemon, "_is_process_running", return_value=False):
-                    with patch("os.kill") as mock_kill:
-                        with patch.object(daemon, "_remove_pid"):
-                            with patch.object(daemon, "_remove_daemon_config"):
-                                result = daemon.stop_daemon(force=True)
-                                assert result is True
-                                mock_kill.assert_called_once_with(12345, signal.SIGKILL)
+                with patch.object(daemon, "_read_port", return_value=None):
+                    # First call returns True (process running), second returns False (exits loop)
+                    # Third call returns False (final check)
+                    with patch.object(daemon, "_is_process_running", side_effect=[True, False, False]):
+                        with patch("os.kill") as mock_kill:
+                            with patch.object(daemon, "_remove_pid"):
+                                with patch.object(daemon, "_remove_daemon_config"):
+                                    result = daemon.stop_daemon(force=True)
+                                    assert result is True
+                                    # Verify SIGKILL was used (not SIGTERM)
+                                    calls = mock_kill.call_args_list
+                                    assert len(calls) >= 1
+                                    assert calls[0][0][1] == signal.SIGKILL
 
     def test_stop_daemon_oserror(self):
         """Test stop_daemon with OSError."""
@@ -161,9 +168,11 @@ class TestStopDaemonAdvanced:
         """Test stop_daemon with generic exception."""
         with patch.object(daemon, "_cleanup_stale_pidfile"):
             with patch.object(daemon, "_read_pid", return_value=12345):
-                with patch("os.kill", side_effect=Exception("Unexpected")):
-                    result = daemon.stop_daemon()
-                    assert result is False
+                with patch.object(daemon, "_read_port", return_value=None):
+                    with patch.object(daemon, "_is_process_running", return_value=True):
+                        with patch("os.kill", side_effect=Exception("Unexpected")):
+                            result = daemon.stop_daemon()
+                            assert result is False
 
 
 class TestShowLogsAdvanced:

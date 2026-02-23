@@ -143,10 +143,13 @@ def convert_anthropic_to_openai(
     # Convert conversation messages
     # Handle ValidatorIterator from Pydantic by iterating directly
     msg_count = 0
+    has_thinking_in_history = False
     if messages:
         for msg in messages:
-            converted_messages = _convert_anthropic_message_to_openai(msg)
+            converted_messages, msg_has_thinking = _convert_anthropic_message_to_openai(msg)
             openai_messages.extend(converted_messages)
+            if msg_has_thinking:
+                has_thinking_in_history = True
             msg_count += 1
     logger.debug(
         f"Converted {msg_count} messages, total OpenAI messages: {len(openai_messages)}"
@@ -267,6 +270,7 @@ def convert_anthropic_to_openai(
             "enable_thinking": False,
         }
 
+
     # Store server tool configs for later use by router
     if server_tools_config:
         params["_server_tools_config"] = server_tools_config
@@ -276,23 +280,25 @@ def convert_anthropic_to_openai(
 
 def _convert_anthropic_message_to_openai(
     msg: MessageParam,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], bool]:
     """
     Convert a single Anthropic message to OpenAI format.
 
-    Returns a list of messages because tool_results need to be
-    separate tool messages in OpenAI format.
+    Returns a tuple of (messages, has_thinking) because tool_results need to be
+    separate tool messages in OpenAI format, and we need to track if thinking
+    blocks are present for clear_thinking configuration.
     """
     role = msg.get("role", "user")
     content = msg.get("content", "")
 
     if isinstance(content, str):
-        return [{"role": role, "content": content}]
+        return [{"role": role, "content": content}], False
 
     # Handle list of content blocks
     openai_content: list[dict[str, Any]] = []
     tool_calls: list[dict[str, Any]] = []
     tool_call_results: list[dict[str, Any]] = []
+    reasoning_content: str | None = None
 
     for block in content:
         if isinstance(block, str):
@@ -305,11 +311,15 @@ def _convert_anthropic_message_to_openai(
             text = block.get("text") if isinstance(block, dict) else block.text
             openai_content.append({"type": "text", "text": text})
 
-        # TODO: Support for multi-turn thinking conversation history
-        # See issue: https://github.com/dongfangzan/local-openai2anthropic/issues/2
-        # elif block_type == "thinking":
-        #     # Thinking blocks are currently ignored in conversion
-        #     # Future: extract and pass as reasoning_content to preserve conversation history
+        elif block_type == "thinking":
+            # Extract thinking content for reasoning_content field
+            if isinstance(block, dict):
+                thinking_text = block.get("thinking", "")
+            else:
+                # Handle ThinkingBlock object
+                thinking_text = getattr(block, "thinking", "")
+            if thinking_text:
+                reasoning_content = thinking_text
 
         elif block_type == "image":
             # Convert image to image_url format
@@ -397,11 +407,34 @@ def _convert_anthropic_message_to_openai(
     # SGLang requires content field to be present, default to empty string
     primary_msg: dict[str, Any] = {"role": role, "content": ""}
 
-    if openai_content:
-        if len(openai_content) == 1 and openai_content[0]["type"] == "text":
-            primary_msg["content"] = openai_content[0]["text"]
+    # Wrap thinking content with standard markers and prepend to content
+    # Using Anthropic's standard format: \n<think>...\</think>\n
+    if reasoning_content:
+        # When there's thinking content, use string format with markers
+        content_parts: list[str] = []
+        content_parts.append(f"\n<think>{reasoning_content}\n</think>\n")
+
+        # Add text content
+        if openai_content:
+            if len(openai_content) == 1 and openai_content[0]["type"] == "text":
+                content_parts.append(openai_content[0]["text"])
+            else:
+                text_parts = []
+                for item in openai_content:
+                    if item.get("type") == "text":
+                        text_parts.append(item.get("text", ""))
+                content_parts.append("".join(text_parts))
+
+        primary_msg["content"] = "\n".join(content_parts)
+    else:
+        # No thinking content - keep original behavior
+        if openai_content:
+            if len(openai_content) == 1 and openai_content[0]["type"] == "text":
+                primary_msg["content"] = openai_content[0]["text"]
+            else:
+                primary_msg["content"] = openai_content
         else:
-            primary_msg["content"] = openai_content
+            primary_msg["content"] = ""
 
     if tool_calls:
         primary_msg["tool_calls"] = tool_calls
@@ -411,7 +444,8 @@ def _convert_anthropic_message_to_openai(
     # Add tool result messages separately
     messages.extend(tool_call_results)
 
-    return messages
+    # Return messages and whether thinking block was present
+    return messages, reasoning_content is not None
 
 
 def _build_usage_with_cache(

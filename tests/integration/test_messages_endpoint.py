@@ -5,7 +5,7 @@ Integration tests for /v1/messages endpoint - non-streaming requests.
 
 import json
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -23,9 +23,9 @@ class TestMessagesEndpointNonStreaming:
         mock_openai_chat_completion: dict[str, Any],
     ) -> None:
         """Test basic chat completion request."""
-        with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("local_openai2anthropic.router.httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_openai_chat_completion
             mock_response.text = json.dumps(mock_openai_chat_completion)
@@ -63,9 +63,9 @@ class TestMessagesEndpointNonStreaming:
         mock_openai_chat_completion: dict[str, Any],
     ) -> None:
         """Test chat completion with system message."""
-        with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("local_openai2anthropic.router.httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_openai_chat_completion
             mock_response.text = json.dumps(mock_openai_chat_completion)
@@ -96,9 +96,9 @@ class TestMessagesEndpointNonStreaming:
         mock_openai_chat_completion: dict[str, Any],
     ) -> None:
         """Test chat completion with temperature and top_p parameters."""
-        with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("local_openai2anthropic.router.httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_openai_chat_completion
             mock_response.text = json.dumps(mock_openai_chat_completion)
@@ -128,9 +128,9 @@ class TestMessagesEndpointNonStreaming:
         mock_openai_chat_completion: dict[str, Any],
     ) -> None:
         """Test chat completion with stop sequences."""
-        with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("local_openai2anthropic.router.httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_openai_chat_completion
             mock_response.text = json.dumps(mock_openai_chat_completion)
@@ -159,9 +159,9 @@ class TestMessagesEndpointNonStreaming:
         mock_openai_chat_completion: dict[str, Any],
     ) -> None:
         """Test chat completion with thinking enabled."""
-        with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("local_openai2anthropic.router.httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_openai_chat_completion
             mock_response.text = json.dumps(mock_openai_chat_completion)
@@ -190,9 +190,9 @@ class TestMessagesEndpointNonStreaming:
         mock_openai_chat_completion_with_tool_calls: dict[str, Any],
     ) -> None:
         """Test chat completion that returns tool calls."""
-        with patch("httpx.AsyncClient") as mock_client_class:
+        with patch("local_openai2anthropic.router.httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
-            mock_response = AsyncMock()
+            mock_response = MagicMock()
             mock_response.status_code = 200
             mock_response.json.return_value = mock_openai_chat_completion_with_tool_calls
             mock_response.text = json.dumps(mock_openai_chat_completion_with_tool_calls)
