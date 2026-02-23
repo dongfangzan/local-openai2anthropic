@@ -16,6 +16,7 @@ from local_openai2anthropic.converter import (
     _strip_claude_billing_header,
     convert_anthropic_to_openai,
     convert_openai_to_anthropic,
+    extract_thinking_from_content,
 )
 from local_openai2anthropic.protocol import UsageWithCache
 
@@ -411,6 +412,200 @@ class TestOpenAIToAnthropic:
         assert usage.output_tokens == 50
         assert usage.cache_creation_input_tokens == 200
         assert usage.cache_read_input_tokens == 300
+
+
+class TestExtractThinkingFromContent:
+    """Tests for thinking content extraction from content string."""
+
+    def test_extract_thinking_from_content_basic(self):
+        """Test basic thinking tag extraction."""
+        content = "<think>用户用中文说'你好'，这是一个简单的问题。我应该用中文友好地回应。\n</think>\n\n你好！很高兴见到你。"
+        thinking_blocks, clean_content = extract_thinking_from_content(content)
+
+        assert len(thinking_blocks) == 1
+        assert "用户用中文说'你好'" in thinking_blocks[0]
+        assert clean_content == "\n\n你好！很高兴见到你。"
+
+    def test_extract_thinking_from_content_no_thinking(self):
+        """Test content without thinking tags."""
+        content = "Hello! How can I help you?"
+        thinking_blocks, clean_content = extract_thinking_from_content(content)
+
+        assert len(thinking_blocks) == 0
+        assert clean_content == "Hello! How can I help you?"
+
+    def test_extract_thinking_from_content_multiple_blocks(self):
+        """Test multiple thinking blocks."""
+        content = "<think>第一步思考</think>中间文本<think>第二步思考</think>"
+        thinking_blocks, clean_content = extract_thinking_from_content(content)
+
+        assert len(thinking_blocks) == 2
+        assert "第一步思考" in thinking_blocks[0]
+        assert "第二步思考" in thinking_blocks[1]
+        assert clean_content == "中间文本"
+
+    def test_extract_thinking_from_content_empty_thinking(self):
+        """Test empty thinking tags."""
+        content = "<think></think>中间文本"
+        thinking_blocks, clean_content = extract_thinking_from_content(content)
+
+        assert len(thinking_blocks) == 1
+        assert thinking_blocks[0] == ""
+        assert clean_content == "中间文本"
+
+    def test_extract_thinking_from_content_empty(self):
+        """Test empty content."""
+        thinking_blocks, clean_content = extract_thinking_from_content("")
+        assert len(thinking_blocks) == 0
+        assert clean_content == ""
+
+    def test_extract_thinking_from_content_none(self):
+        """Test None content."""
+        thinking_blocks, clean_content = extract_thinking_from_content(None)
+        assert len(thinking_blocks) == 0
+        assert clean_content == ""
+
+
+class TestOpenAIToAnthropicWithThinkingTags:
+    """Tests for OpenAI to Anthropic conversion with thinking tags in content."""
+
+    def test_thinking_tags_extracted_from_content(self):
+        """Test that thinking tags in content are extracted to thinking blocks."""
+        completion = ChatCompletion(
+            id="test-id",
+            model="glm-4.7",
+            object="chat.completion",
+            created=1234567890,
+            choices=[
+                Choice(
+                    index=0,
+                    message=ChatCompletionMessage(
+                        role="assistant",
+                        content="<think>用户说'你好'，我应该用中文回应。\n</think>\n\n你好！很高兴见到你。",
+                        reasoning_content=None,
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            usage=CompletionUsage(
+                prompt_tokens=10,
+                completion_tokens=20,
+                total_tokens=30,
+            ),
+        )
+
+        result = convert_openai_to_anthropic(completion, "glm-4.7")
+
+        # Should have 2 content blocks: thinking and text
+        assert len(result.content) == 2
+
+        # First block should be thinking
+        assert result.content[0].type == "thinking"
+        assert "用户说'你好'" in result.content[0].thinking
+
+        # Second block should be text (with thinking tags removed)
+        assert result.content[1].type == "text"
+        assert "你好！很高兴见到你。" in result.content[1].text
+        assert "<think>" not in result.content[1].text
+
+    def test_no_thinking_tags_unchanged(self):
+        """Test that content without thinking tags is unchanged."""
+        completion = ChatCompletion(
+            id="test-id",
+            model="gpt-4o",
+            object="chat.completion",
+            created=1234567890,
+            choices=[
+                Choice(
+                    index=0,
+                    message=ChatCompletionMessage(
+                        role="assistant",
+                        content="Hello! How can I help?",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            usage=CompletionUsage(
+                prompt_tokens=10,
+                completion_tokens=20,
+                total_tokens=30,
+            ),
+        )
+
+        result = convert_openai_to_anthropic(completion, "gpt-4o")
+
+        assert len(result.content) == 1
+        assert result.content[0].type == "text"
+        assert result.content[0].text == "Hello! How can I help?"
+
+    def test_reasoning_content_takes_precedence(self):
+        """Test that reasoning_content field takes precedence over content tags."""
+        completion = ChatCompletion(
+            id="test-id",
+            model="glm-4.7",
+            object="chat.completion",
+            created=1234567890,
+            choices=[
+                Choice(
+                    index=0,
+                    message=ChatCompletionMessage(
+                        role="assistant",
+                        content="<think>这应该在reasoning_content中</think>",
+                        reasoning_content="这是reasoning_content字段的内容",
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            usage=CompletionUsage(
+                prompt_tokens=10,
+                completion_tokens=20,
+                total_tokens=30,
+            ),
+        )
+
+        result = convert_openai_to_anthropic(completion, "glm-4.7")
+
+        # Should use reasoning_content, not content tags
+        assert len(result.content) == 1
+        assert result.content[0].type == "thinking"
+        assert result.content[0].thinking == "这是reasoning_content字段的内容"
+
+    def test_multiple_thinking_blocks(self):
+        """Test multiple thinking blocks in content."""
+        completion = ChatCompletion(
+            id="test-id",
+            model="glm-4.7",
+            object="chat.completion",
+            created=1234567890,
+            choices=[
+                Choice(
+                    index=0,
+                    message=ChatCompletionMessage(
+                        role="assistant",
+                        content="<think>第一步思考</think>中间内容<think>第二步思考</think>",
+                        reasoning_content=None,
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            usage=CompletionUsage(
+                prompt_tokens=10,
+                completion_tokens=20,
+                total_tokens=30,
+            ),
+        )
+
+        result = convert_openai_to_anthropic(completion, "glm-4.7")
+
+        # Should have 3 content blocks: thinking, thinking, text
+        # (all thinking blocks are grouped first, then text)
+        assert len(result.content) == 3
+        assert result.content[0].type == "thinking"
+        assert "第一步思考" in result.content[0].thinking
+        assert result.content[1].type == "thinking"
+        assert "第二步思考" in result.content[1].thinking
+        assert result.content[2].type == "text"
+        assert result.content[2].text == "中间内容"
 
 
 if __name__ == "__main__":
