@@ -151,7 +151,7 @@ class TestAnthropicToOpenAI:
         
         result = convert_anthropic_to_openai(params)
         
-        assert result["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True, "clear_thinking": False}
+        assert result["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
 
     def test_thinking_disabled(self):
         """Test thinking disabled conversion."""
@@ -177,7 +177,7 @@ class TestAnthropicToOpenAI:
 
         result = convert_anthropic_to_openai(params)
 
-        assert result["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True, "clear_thinking": False}
+        assert result["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
 
     def test_thinking_adaptive(self):
         """Test adaptive thinking mode."""
@@ -190,76 +190,7 @@ class TestAnthropicToOpenAI:
 
         result = convert_anthropic_to_openai(params)
 
-        assert result["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True, "clear_thinking": False}
-
-
-class TestThinkingBlockExtraction:
-    """Tests for extracting thinking blocks from messages and converting to reasoning_content."""
-
-    def test_thinking_block_extracted_to_reasoning_content(self):
-        """Test that ThinkingBlock in messages is converted to reasoning_content."""
-        params: MessageCreateParams = {
-            "model": "claude-opus-4-6",
-            "max_tokens": 1024,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "thinking", "thinking": "Previous thinking content", "signature": "sig1"},
-                        {"type": "text", "text": "User message"},
-                    ],
-                }
-            ],
-        }
-
-        result = convert_anthropic_to_openai(params)
-
-        # The thinking block should be extracted to reasoning_content
-        assert "reasoning_content" in result["messages"][0]
-        assert result["messages"][0]["reasoning_content"] == "Previous thinking content"
-        # Text content should still be present
-        assert result["messages"][0]["content"] == "User message"
-
-    def test_multiple_thinking_blocks_concatenated(self):
-        """Test that multiple thinking blocks are concatenated."""
-        params: MessageCreateParams = {
-            "model": "claude-opus-4-6",
-            "max_tokens": 1024,
-            "messages": [
-                {
-                    "role": "assistant",
-                    "content": [
-                        {"type": "thinking", "thinking": "First thinking", "signature": "sig1"},
-                        {"type": "thinking", "thinking": "Second thinking", "signature": "sig2"},
-                        {"type": "text", "text": "Assistant response"},
-                    ],
-                }
-            ],
-        }
-
-        result = convert_anthropic_to_openai(params)
-
-        # Both thinking blocks should be concatenated
-        assert result["messages"][0]["reasoning_content"] == "First thinkingSecond thinking"
-        assert result["messages"][0]["content"] == "Assistant response"
-
-    def test_no_thinking_block_no_reasoning_content(self):
-        """Test that messages without thinking blocks don't have reasoning_content."""
-        params: MessageCreateParams = {
-            "model": "claude-opus-4-6",
-            "max_tokens": 1024,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [{"type": "text", "text": "Hello"}],
-                }
-            ],
-        }
-
-        result = convert_anthropic_to_openai(params)
-
-        assert "reasoning_content" not in result["messages"][0]
-        assert result["messages"][0]["content"] == "Hello"
+        assert result["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
 
 
 class TestStripClaudeBillingHeader:
