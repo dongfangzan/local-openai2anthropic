@@ -237,17 +237,14 @@ def load_config_from_file() -> dict:
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from config file and environment variables.
-    
-    Environment variables take precedence over config file values.
-    Prefix all env vars with OA2A_ (e.g., OA2A_OPENAI_API_KEY).
+    """Application settings loaded from config file only.
+
+    Configuration is read exclusively from ~/.oa2a/config.toml.
+    Environment variables are ignored - use the config file instead.
     """
 
     model_config = SettingsConfigDict(
         extra="ignore",
-        env_prefix="OA2A_",
-        env_file=".env",
-        env_file_encoding="utf-8",
     )
 
     # OpenAI API Configuration
@@ -304,39 +301,19 @@ class Settings(BaseSettings):
 
     @classmethod
     def from_config(cls) -> "Settings":
-        """Load settings from config file with environment variable override.
-        
-        Environment variables (with OA2A_ prefix) take precedence over config file values.
-        pydantic-settings automatically reads environment variables.
-        
+        """Load settings from config file.
+
+        Configuration is read exclusively from ~/.oa2a/config.toml.
+        Environment variables are ignored.
+
         Returns:
-            Settings instance populated from config file and env vars
+            Settings instance populated from config file
         """
-        import os
-        
-        # pydantic-settings reads environment variables automatically
-        # We need to check if env vars are set, and only use config file as fallback
         config_data = load_config_from_file()
-        
-        # Build kwargs from config file, but only for fields not set via env var
-        # pydantic-settings uses env_prefix, so we check OA2A_* vars
-        kwargs = {}
-        env_prefix = "OA2A_"
-        
-        for key, value in config_data.items():
-            # Skip empty values
-            if value in (None, ""):
-                continue
-            
-            # Check if corresponding env var is set
-            env_var_name = env_prefix + key.upper()
-            if os.environ.get(env_var_name) is not None:
-                # Env var is set, skip config file value
-                continue
-            
-            # No env var, use config file value
-            kwargs[key] = value
-        
+
+        # Filter out empty values
+        kwargs = {key: value for key, value in config_data.items() if value not in (None, "")}
+
         return cls(**kwargs)
 
 
@@ -355,11 +332,11 @@ def get_settings() -> Settings:
 
     Creates config file interactively if it doesn't exist and running in a TTY.
     Falls back to creating a default config file in non-interactive environments.
-    
-    Environment variables (with OA2A_ prefix) take precedence over config file values.
+
+    Configuration is read exclusively from ~/.oa2a/config.toml.
 
     Returns:
-        Settings instance loaded from config file and environment variables
+        Settings instance loaded from config file
     """
     config_file = get_config_file()
     if not config_file.exists():
