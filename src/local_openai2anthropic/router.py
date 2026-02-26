@@ -248,7 +248,32 @@ async def create_message(
                         content=error_response.model_dump(),
                     )
 
-                openai_completion = response.json()
+                if not response.content:
+                    error_response = AnthropicErrorResponse(
+                        error=AnthropicError(
+                            type="api_error",
+                            message="Upstream API returned empty response",
+                        )
+                    )
+                    return JSONResponse(
+                        status_code=HTTPStatus.BAD_GATEWAY,
+                        content=error_response.model_dump(),
+                    )
+
+                try:
+                    openai_completion = response.json()
+                except json.JSONDecodeError as e:
+                    error_response = AnthropicErrorResponse(
+                        error=AnthropicError(
+                            type="api_error",
+                            message=f"Failed to parse upstream response: {str(e)}",
+                        )
+                    )
+                    return JSONResponse(
+                        status_code=HTTPStatus.BAD_GATEWAY,
+                        content=error_response.model_dump(),
+                    )
+
                 logger.debug(
                     f"[OpenAI Response] {json.dumps(openai_completion, ensure_ascii=False, indent=2)}"
                 )
