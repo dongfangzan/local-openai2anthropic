@@ -98,12 +98,12 @@ def convert_anthropic_to_openai(
     system = anthropic_params.get("system")
     stop_sequences = anthropic_params.get("stop_sequences")
     stream = anthropic_params.get("stream", False)
-    temperature = anthropic_params.get("temperature", 0.6)
+    temperature = anthropic_params.get("temperature")
     tool_choice = anthropic_params.get("tool_choice")
     tools = anthropic_params.get("tools")
     top_k = anthropic_params.get("top_k")
-    top_p = anthropic_params.get("top_p", 0.95)
-    repetition_penalty = anthropic_params.get("repetition_penalty", 1.1)
+    top_p = anthropic_params.get("top_p")
+    repetition_penalty = anthropic_params.get("repetition_penalty")
     thinking = anthropic_params.get("thinking")
     # metadata is accepted but not forwarded to OpenAI
 
@@ -407,34 +407,20 @@ def _convert_anthropic_message_to_openai(
     # SGLang requires content field to be present, default to empty string
     primary_msg: dict[str, Any] = {"role": role, "content": ""}
 
-    # Wrap thinking content with standard markers and prepend to content
-    # Using Anthropic's standard format: \n<think>...\</think>\n
-    if reasoning_content:
-        # When there's thinking content, use string format with markers
-        content_parts: list[str] = []
-        content_parts.append(f"\n<think>{reasoning_content}\n</think>\n")
-
-        # Add text content
-        if openai_content:
-            if len(openai_content) == 1 and openai_content[0]["type"] == "text":
-                content_parts.append(openai_content[0]["text"])
-            else:
-                text_parts = []
-                for item in openai_content:
-                    if item.get("type") == "text":
-                        text_parts.append(item.get("text", ""))
-                content_parts.append("".join(text_parts))
-
-        primary_msg["content"] = "\n".join(content_parts)
-    else:
-        # No thinking content - keep original behavior
-        if openai_content:
-            if len(openai_content) == 1 and openai_content[0]["type"] == "text":
-                primary_msg["content"] = openai_content[0]["text"]
-            else:
-                primary_msg["content"] = openai_content
+    # Keep assistant-visible content and reasoning separate.
+    # Do not inject <think> markers into content by default.
+    if openai_content:
+        if len(openai_content) == 1 and openai_content[0]["type"] == "text":
+            primary_msg["content"] = openai_content[0]["text"]
         else:
-            primary_msg["content"] = ""
+            primary_msg["content"] = openai_content
+    else:
+        primary_msg["content"] = ""
+
+    if reasoning_content:
+        # vLLM supports `reasoning`; `reasoning_content` is kept for compatibility.
+        primary_msg["reasoning"] = reasoning_content
+        primary_msg["reasoning_content"] = reasoning_content
 
     if tool_calls:
         primary_msg["tool_calls"] = tool_calls
