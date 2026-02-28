@@ -1,6 +1,6 @@
 [project]
 name = "local-openai2anthropic"
-version = "0.5.8"
+version = "0.5.9"
 description = "A lightweight proxy server that converts Anthropic Messages API to OpenAI API"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -69,3 +69,6 @@ target-version = "py312"
 [tool.mypy]
 python_version = "3.12"
 strict = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

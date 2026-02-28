@@ -444,10 +444,9 @@ class TestThinkingBlockConversion:
 
         assert has_thinking is True
         assert result[0]["role"] == "assistant"
-        # Content should contain thinking markers
-        assert "<think>" in result[0]["content"]
-        assert "User greeted me in Chinese." in result[0]["content"]
-        assert "Hello! I'm Claude Code." in result[0]["content"]
+        assert result[0]["reasoning"] == "User greeted me in Chinese."
+        assert result[0]["reasoning_content"] == "User greeted me in Chinese."
+        assert result[0]["content"] == "Hello! I'm Claude Code."
 
     def test_thinking_block_with_tool_use_block(self):
         """Test thinking block combined with tool_use block in content."""
@@ -465,7 +464,9 @@ class TestThinkingBlockConversion:
         assert has_thinking is True
         assert "tool_calls" in result[0]
         assert result[0]["tool_calls"][0]["function"]["name"] == "web_search"
-        assert "<think>" in result[0]["content"]
+        assert result[0]["reasoning"] == "I need to search for weather."
+        assert result[0]["reasoning_content"] == "I need to search for weather."
+        assert result[0]["content"] == "Let me check the weather for you."
 
     def test_no_thinking_block(self):
         """Test message without thinking block."""
@@ -493,10 +494,12 @@ class TestThinkingBlockConversion:
         result, has_thinking = _convert_anthropic_message_to_openai(msg)
 
         assert has_thinking is True
-        assert "<think>" in result[0]["content"]
-        assert "This is my thinking." in result[0]["content"]
-        assert "First part." in result[0]["content"]
-        assert "Second part." in result[0]["content"]
+        assert result[0]["reasoning"] == "This is my thinking."
+        assert result[0]["reasoning_content"] == "This is my thinking."
+        assert result[0]["content"] == [
+            {"type": "text", "text": "First part."},
+            {"type": "text", "text": "Second part."},
+        ]
 
     def test_thinking_block_string_content(self):
         """Test thinking block with string content (edge case)."""
