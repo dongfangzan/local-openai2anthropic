@@ -6,7 +6,7 @@ Configuration settings for the proxy server.
 import sys
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -78,7 +78,16 @@ log_dir = ""  # Empty uses platform-specific default
 tavily_api_key = ""
 tavily_timeout = 30.0
 tavily_max_results = 5
+
+# TongXiao (通晓) Web Search Configuration - 阿里云统一搜索
+tongxiao_api_key = ""
+tongxiao_timeout = 30.0
+tongxiao_max_results = 5
+
+# Web Search General Settings
 websearch_max_uses = 5
+# Choose search provider: "tavily", "tongxiao", or "both" (uses both and merges results)
+websearch_provider = "tavily"
 """
     config_file.write_text(default_config, encoding="utf-8")
 
@@ -199,7 +208,10 @@ def create_config_from_dict(config: dict) -> None:
         "log_dir": "",
         "tavily_timeout": 30.0,
         "tavily_max_results": 5,
+        "tongxiao_timeout": 30.0,
+        "tongxiao_max_results": 5,
         "websearch_max_uses": 5,
+        "websearch_provider": "tavily",
     }
 
     # Add optional values only if present
@@ -275,7 +287,18 @@ class Settings(BaseSettings):
     tavily_api_key: Optional[str] = Field(default=None, description="Tavily API key for web search")
     tavily_timeout: float = Field(default=30.0, description="Tavily API timeout")
     tavily_max_results: int = Field(default=5, description="Max Tavily search results")
+
+    # TongXiao (通晓) Web Search Configuration
+    tongxiao_api_key: Optional[str] = Field(default=None, description="TongXiao API key for web search")
+    tongxiao_timeout: float = Field(default=30.0, description="TongXiao API timeout")
+    tongxiao_max_results: int = Field(default=5, description="Max TongXiao search results")
+
+    # Web Search General Settings
     websearch_max_uses: int = Field(default=5, description="Max web search uses per request")
+    websearch_provider: Literal["tavily", "tongxiao", "both"] = Field(
+        default="tavily",
+        description="Search provider: 'tavily', 'tongxiao', or 'both'"
+    )
 
     @property
     def openai_auth_headers(self) -> dict[str, str]:

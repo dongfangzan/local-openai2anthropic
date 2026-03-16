@@ -84,7 +84,7 @@ class TestConvertAnthropicToOpenAIEdgeCases:
         assert result["repetition_penalty"] == 1.5
 
     def test_default_repetition_penalty(self):
-        """Test default repetition_penalty value."""
+        """Test default repetition_penalty value (None when not specified)."""
         params: MessageCreateParams = {
             "model": "gpt-4o",
             "max_tokens": 1024,
@@ -93,7 +93,8 @@ class TestConvertAnthropicToOpenAIEdgeCases:
 
         result = convert_anthropic_to_openai(params)
 
-        assert result["repetition_penalty"] == 1.1
+        # repetition_penalty is None when not explicitly specified
+        assert result["repetition_penalty"] is None
 
 
 class TestConvertAnthropicMessageEdgeCases:

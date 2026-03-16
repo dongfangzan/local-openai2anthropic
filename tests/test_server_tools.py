@@ -123,10 +123,11 @@ class TestWebSearchServerTool:
         assert WebSearchServerTool.tool_type == "web_search_20250305"
         assert WebSearchServerTool.tool_name == "web_search"
 
-    def test_is_enabled_with_key(self):
-        """Test is_enabled when API key is present."""
-        # Reset the client cache to ensure fresh state
-        WebSearchServerTool._client = None
+    def test_is_enabled_with_tavily_key(self):
+        """Test is_enabled when Tavily API key is present."""
+        # Reset the client caches to ensure fresh state
+        WebSearchServerTool._tavily_client = None
+        WebSearchServerTool._tongxiao_client = None
 
         settings = Settings(
             openai_api_key="test",
@@ -137,14 +138,31 @@ class TestWebSearchServerTool:
         enabled = WebSearchServerTool.is_enabled(settings)
         assert enabled is True
 
+    def test_is_enabled_with_tongxiao_key(self):
+        """Test is_enabled when TongXiao API key is present."""
+        # Reset the client caches to ensure fresh state
+        WebSearchServerTool._tavily_client = None
+        WebSearchServerTool._tongxiao_client = None
+
+        settings = Settings(
+            openai_api_key="test",
+            tongxiao_api_key="tx-test",
+        )
+
+        # Should be enabled with API key
+        enabled = WebSearchServerTool.is_enabled(settings)
+        assert enabled is True
+
     def test_is_enabled_without_key(self):
-        """Test is_enabled when API key is missing."""
-        # Reset the client cache to ensure fresh state
-        WebSearchServerTool._client = None
+        """Test is_enabled when no API key is missing."""
+        # Reset the client caches to ensure fresh state
+        WebSearchServerTool._tavily_client = None
+        WebSearchServerTool._tongxiao_client = None
 
         settings = Settings(
             openai_api_key="test",
             tavily_api_key=None,
+            tongxiao_api_key=None,
         )
 
         # Should not be enabled without API key
@@ -247,9 +265,14 @@ class TestWebSearchServerTool:
     @pytest.mark.asyncio
     async def test_execute_success(self):
         """Test successful tool execution."""
+        # Reset the client caches
+        WebSearchServerTool._tavily_client = None
+        WebSearchServerTool._tongxiao_client = None
+
         settings = Settings(
             openai_api_key="test",
             tavily_api_key="tvly-test",
+            websearch_provider="tavily",
         )
 
         # Mock the Tavily client
@@ -261,8 +284,9 @@ class TestWebSearchServerTool:
 
         with patch.object(
             WebSearchServerTool,
-            "_get_client",
+            "_get_tavily_client",
             return_value=MagicMock(
+                is_enabled=MagicMock(return_value=True),
                 search=AsyncMock(return_value=([mock_result], None))
             ),
         ):
@@ -280,15 +304,24 @@ class TestWebSearchServerTool:
     @pytest.mark.asyncio
     async def test_execute_error(self):
         """Test tool execution with error."""
+        # Reset the client caches
+        WebSearchServerTool._tavily_client = None
+        WebSearchServerTool._tongxiao_client = None
+
         settings = Settings(
             openai_api_key="test",
             tavily_api_key="tvly-test",
+            websearch_provider="tavily",
         )
 
         with patch.object(
             WebSearchServerTool,
-            "_get_client",
-            return_value=MagicMock(search=AsyncMock(return_value=([], "search_error"))),
+            "_get_tavily_client",
+            return_value=MagicMock(
+                is_enabled=MagicMock(return_value=True),
+                # Test with a known specific error code
+                search=AsyncMock(return_value=([], "too_many_requests"))
+            ),
         ):
             result = await WebSearchServerTool.execute(
                 call_id="call_123",
@@ -298,7 +331,7 @@ class TestWebSearchServerTool:
             )
 
         assert result.success is False
-        assert result.error_code == "search_error"
+        assert result.error_code == "too_many_requests"
         assert result.usage_increment == {"web_search_requests": 1}
 
     def test_build_content_blocks_success(self):

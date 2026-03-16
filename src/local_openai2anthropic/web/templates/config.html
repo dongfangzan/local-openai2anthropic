@@ -1,0 +1,494 @@
+{% extends "base.html" %}
+
+{% block title %}配置管理 - OA2A Proxy{% endblock %}
+{% block page_title %}配置管理{% endblock %}
+{% block page_subtitle %}管理代理服务器的配置参数{% endblock %}
+
+{% block content %}
+<div x-data="configManager()" x-init="init()">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Config Form -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- OpenAI Configuration -->
+            <div class="glass-card rounded-2xl p-6">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-stone-900">OpenAI 配置</h3>
+                        <p class="text-xs text-stone-400">配置上游 OpenAI 兼容 API</p>
+                    </div>
+                </div>
+                <div class="space-y-5">
+                    <div>
+                        <label class="block text-sm font-semibold text-stone-700 mb-2">API 密钥</label>
+                        <div class="relative">
+                            <input :type="showApiKey ? 'text' : 'password'"
+                                   x-model="formData.openai_api_key"
+                                   class="input-field w-full px-4 py-2.5 rounded-xl text-sm text-stone-800 placeholder-stone-300"
+                                   placeholder="sk-...">
+                            <button @click="showApiKey = !showApiKey"
+                                    class="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition cursor-pointer">
+                                <svg x-show="!showApiKey" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                                <svg x-show="showApiKey" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                                    <line x1="1" y1="1" x2="23" y2="23"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <p class="text-xs text-stone-400 mt-1.5">你的 OpenAI 或兼容 API 密钥</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-stone-700 mb-2">Base URL</label>
+                        <input type="url" x-model="formData.openai_base_url"
+                               class="input-field w-full px-4 py-2.5 rounded-xl text-sm text-stone-800 font-mono placeholder-stone-300"
+                               placeholder="https://api.openai.com/v1">
+                        <p class="text-xs text-stone-400 mt-1.5">OpenAI 兼容 API 的基础 URL</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-stone-700 mb-2">Organization ID</label>
+                            <input type="text" x-model="formData.openai_org_id"
+                                   class="input-field w-full px-4 py-2.5 rounded-xl text-sm text-stone-800 font-mono placeholder-stone-300"
+                                   placeholder="org-...">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-stone-700 mb-2">Project ID</label>
+                            <input type="text" x-model="formData.openai_project_id"
+                                   class="input-field w-full px-4 py-2.5 rounded-xl text-sm text-stone-800 font-mono placeholder-stone-300"
+                                   placeholder="proj-...">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Server Configuration -->
+            <div class="glass-card rounded-2xl p-6">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-teal-50 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-teal-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+                            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+                            <line x1="6" y1="6" x2="6.01" y2="6"/>
+                            <line x1="6" y1="18" x2="6.01" y2="18"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-stone-900">服务器配置</h3>
+                        <p class="text-xs text-stone-400">配置代理服务器参数</p>
+                    </div>
+                </div>
+                <div class="space-y-5">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-stone-700 mb-2">监听地址</label>
+                            <input type="text" x-model="formData.host"
+                                   class="input-field w-full px-4 py-2.5 rounded-xl text-sm text-stone-800 font-mono placeholder-stone-300"
+                                   placeholder="0.0.0.0">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-stone-700 mb-2">端口</label>
+                            <input type="number" x-model.number="formData.port"
+                                   class="input-field w-full px-4 py-2.5 rounded-xl text-sm text-stone-800 font-mono placeholder-stone-300"
+                                   placeholder="8080">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-stone-700 mb-2">请求超时 (秒)</label>
+                        <input type="number" x-model.number="formData.request_timeout"
+                               class="input-field w-full px-4 py-2.5 rounded-xl text-sm text-stone-800 font-mono placeholder-stone-300"
+                               placeholder="300">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-stone-700 mb-2">服务器 API 密钥</label>
+                        <div class="relative">
+                            <input :type="showServerKey ? 'text' : 'password'"
+                                   x-model="formData.api_key"
+                                   class="input-field w-full px-4 py-2.5 rounded-xl text-sm text-stone-800 placeholder-stone-300"
+                                   placeholder="用于保护你的代理服务器">
+                            <button @click="showServerKey = !showServerKey"
+                                    class="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition cursor-pointer">
+                                <svg x-show="!showServerKey" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                                <svg x-show="showServerKey" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                                    <line x1="1" y1="1" x2="23" y2="23"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <p class="text-xs text-stone-400 mt-1.5">设置后，客户端需要提供此密钥才能访问</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CORS Configuration -->
+            <div class="glass-card rounded-2xl p-6">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <line x1="2" y1="12" x2="22" y2="12"/>
+                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-stone-900">CORS 配置</h3>
+                        <p class="text-xs text-stone-400">跨域资源共享设置</p>
+                    </div>
+                </div>
+                <div class="space-y-5">
+                    <div>
+                        <label class="block text-sm font-semibold text-stone-700 mb-2">允许的来源</label>
+                        <input type="text" x-model="corsOriginsText"
+                               class="input-field w-full px-4 py-2.5 rounded-xl text-sm text-stone-800 font-mono placeholder-stone-300"
+                               placeholder="* 或 https://example.com, https://app.example.com">
+                        <p class="text-xs text-stone-400 mt-1.5">使用逗号分隔多个来源，或 * 允许所有</p>
+                    </div>
+                    <label class="flex items-center gap-2.5 cursor-pointer">
+                        <input type="checkbox" x-model="formData.cors_credentials"
+                               class="w-4 h-4 rounded border-stone-300 text-brand-500 focus:ring-brand-500 focus:ring-offset-0">
+                        <span class="text-sm text-stone-700">允许凭证</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Tavily Web Search -->
+            <div class="glass-card rounded-2xl p-6">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-cyan-50 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-cyan-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"/>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-stone-900">Web 搜索 (Tavily)</h3>
+                        <p class="text-xs text-stone-400">为本地模型启用网络搜索能力</p>
+                    </div>
+                </div>
+                <div class="space-y-5">
+                    <div>
+                        <label class="block text-sm font-semibold text-stone-700 mb-2">Tavily API 密钥</label>
+                        <div class="relative">
+                            <input :type="showTavilyKey ? 'text' : 'password'"
+                                   x-model="formData.tavily_api_key"
+                                   class="input-field w-full px-4 py-2.5 rounded-xl text-sm text-stone-800 placeholder-stone-300"
+                                   placeholder="tvly-...">
+                            <button @click="showTavilyKey = !showTavilyKey"
+                                    class="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 transition cursor-pointer">
+                                <svg x-show="!showTavilyKey" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                                <svg x-show="showTavilyKey" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                                    <line x1="1" y1="1" x2="23" y2="23"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <p class="text-xs text-stone-400 mt-1.5">从 <a href="https://tavily.com" target="_blank" class="text-brand-500 hover:text-brand-600 transition">tavily.com</a> 获取免费 API 密钥</p>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-semibold text-stone-700 mb-2">超时 (秒)</label>
+                            <input type="number" x-model.number="formData.tavily_timeout"
+                                   class="input-field w-full px-4 py-2.5 rounded-xl text-sm text-stone-800 font-mono placeholder-stone-300">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-stone-700 mb-2">最大结果数</label>
+                            <input type="number" x-model.number="formData.tavily_max_results"
+                                   class="input-field w-full px-4 py-2.5 rounded-xl text-sm text-stone-800 font-mono placeholder-stone-300">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logging Configuration -->
+            <div class="glass-card rounded-2xl p-6">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center">
+                        <svg class="w-5 h-5 text-rose-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="16" y1="13" x2="8" y2="13"/>
+                            <line x1="16" y1="17" x2="8" y2="17"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-stone-900">日志配置</h3>
+                        <p class="text-xs text-stone-400">配置日志级别和目录</p>
+                    </div>
+                </div>
+                <div class="space-y-5">
+                    <div>
+                        <label class="block text-sm font-semibold text-stone-700 mb-2">日志级别</label>
+                        <select x-model="formData.log_level"
+                                class="input-field w-full px-4 py-2.5 rounded-xl text-sm text-stone-800">
+                            <option value="DEBUG">DEBUG - 调试</option>
+                            <option value="INFO">INFO - 信息</option>
+                            <option value="WARNING">WARNING - 警告</option>
+                            <option value="ERROR">ERROR - 错误</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-stone-700 mb-2">日志目录</label>
+                        <input type="text" x-model="formData.log_dir"
+                               class="input-field w-full px-4 py-2.5 rounded-xl text-sm text-stone-800 font-mono placeholder-stone-300"
+                               placeholder="留空使用默认目录">
+                        <p class="text-xs text-stone-400 mt-1.5">留空将使用平台默认目录</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Save Button -->
+            <div class="flex items-center justify-between">
+                <button @click="resetForm()"
+                        class="btn-secondary px-5 py-2.5 rounded-xl text-sm font-semibold text-stone-600 cursor-pointer">
+                    重置
+                </button>
+                <div class="flex items-center gap-3">
+                    <button @click="saveConfig()"
+                            :disabled="saving"
+                            class="btn-primary px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer">
+                        <span x-text="saving ? '保存中...' : '保存配置'"></span>
+                    </button>
+                    <button @click="saveAndRestart()"
+                            :disabled="saving"
+                            class="px-6 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                            style="background: linear-gradient(135deg, #14B8A6 0%, #0D9488 100%); box-shadow: 0 2px 8px rgba(20, 184, 166, 0.25);">
+                        保存并重启
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Config Info Sidebar -->
+        <div class="space-y-6">
+            <!-- Config File Info -->
+            <div class="glass-card rounded-2xl p-6">
+                <h3 class="text-sm font-bold text-stone-900 mb-4">配置文件</h3>
+                <div class="space-y-4">
+                    <div>
+                        <p class="text-[11px] text-stone-400 mb-1">位置</p>
+                        <p class="text-xs font-mono text-stone-700 break-all bg-stone-50 px-3 py-2 rounded-lg" x-text="configPath"></p>
+                    </div>
+                    <div>
+                        <p class="text-[11px] text-stone-400 mb-1">最后修改</p>
+                        <p class="text-sm text-stone-700" x-text="formatTime(configModified)"></p>
+                    </div>
+                </div>
+                <button @click="openConfigFile()"
+                        class="mt-5 w-full btn-secondary px-4 py-2.5 rounded-xl text-sm font-semibold text-stone-600 cursor-pointer">
+                    在文件管理器中打开
+                </button>
+            </div>
+
+            <!-- Quick Presets -->
+            <div class="glass-card rounded-2xl p-6">
+                <h3 class="text-sm font-bold text-stone-900 mb-4">快速预设</h3>
+                <div class="space-y-2">
+                    <button @click="applyPreset('openai')"
+                            class="w-full px-4 py-3 text-left text-sm bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 rounded-xl transition cursor-pointer flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
+                            <svg class="w-4 h-4 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                            </svg>
+                        </div>
+                        <span class="font-semibold text-stone-700">OpenAI 官方</span>
+                    </button>
+                    <button @click="applyPreset('localai')"
+                            class="w-full px-4 py-3 text-left text-sm bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 rounded-xl transition cursor-pointer flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center">
+                            <svg class="w-4 h-4 text-teal-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                                <line x1="8" y1="21" x2="16" y2="21"/>
+                                <line x1="12" y1="17" x2="12" y2="21"/>
+                            </svg>
+                        </div>
+                        <span class="font-semibold text-stone-700">LocalAI</span>
+                    </button>
+                    <button @click="applyPreset('ollama')"
+                            class="w-full px-4 py-3 text-left text-sm bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 rounded-xl transition cursor-pointer flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+                            <svg class="w-4 h-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                                <path d="M2 17l10 5 10-5"/>
+                                <path d="M2 12l10 5 10-5"/>
+                            </svg>
+                        </div>
+                        <span class="font-semibold text-stone-700">Ollama</span>
+                    </button>
+                    <button @click="applyPreset('vllm')"
+                            class="w-full px-4 py-3 text-left text-sm bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 rounded-xl transition cursor-pointer flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center">
+                            <svg class="w-4 h-4 text-rose-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                            </svg>
+                        </div>
+                        <span class="font-semibold text-stone-700">vLLM</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Help -->
+            <div class="bg-brand-50 border border-brand-100 rounded-2xl p-5">
+                <div class="flex items-start gap-3">
+                    <svg class="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/>
+                        <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                    <div>
+                        <h4 class="text-sm font-semibold text-brand-800 mb-1">提示</h4>
+                        <p class="text-xs text-brand-600">修改配置后需要重启服务器才能生效。你可以点击"保存并重启"按钮一键完成。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function configManager() {
+    return {
+        formData: {
+            openai_api_key: '',
+            openai_base_url: 'https://api.openai.com/v1',
+            openai_org_id: '',
+            openai_project_id: '',
+            host: '0.0.0.0',
+            port: 8080,
+            request_timeout: 300.0,
+            api_key: '',
+            cors_origins: ['*'],
+            cors_credentials: true,
+            cors_methods: ['*'],
+            cors_headers: ['*'],
+            log_level: 'INFO',
+            log_dir: '',
+            tavily_api_key: '',
+            tavily_timeout: 30.0,
+            tavily_max_results: 5,
+            websearch_max_uses: 5
+        },
+        originalData: null,
+        configPath: '~/.oa2a/config.toml',
+        configModified: null,
+        saving: false,
+        showApiKey: false,
+        showServerKey: false,
+        showTavilyKey: false,
+        corsOriginsText: '*',
+
+        async init() {
+            await this.fetchConfig();
+            this.originalData = JSON.parse(JSON.stringify(this.formData));
+        },
+
+        async fetchConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+                this.formData = { ...this.formData, ...data };
+                this.corsOriginsText = Array.isArray(data.cors_origins)
+                    ? data.cors_origins.join(', ')
+                    : '*';
+                this.configModified = data.config_modified;
+            } catch (e) {
+                console.error('Failed to fetch config:', e);
+                showToast('获取配置失败', 'error');
+            }
+        },
+
+        async saveConfig() {
+            this.saving = true;
+            try {
+                const data = { ...this.formData };
+                data.cors_origins = this.corsOriginsText.split(',').map(s => s.trim()).filter(Boolean);
+
+                const response = await fetch('/api/config', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                if (response.ok) {
+                    showToast('配置已保存', 'success');
+                    this.originalData = JSON.parse(JSON.stringify(this.formData));
+                } else {
+                    showToast('保存失败', 'error');
+                }
+            } catch (e) {
+                showToast('保存失败: ' + e.message, 'error');
+            } finally {
+                this.saving = false;
+            }
+        },
+
+        async saveAndRestart() {
+            await this.saveConfig();
+            if (!this.saving) {
+                setTimeout(() => this.restartServer(), 500);
+            }
+        },
+
+        async restartServer() {
+            try {
+                const response = await fetch('/api/restart', { method: 'POST' });
+                if (response.ok) {
+                    showToast('服务器正在重启...', 'success');
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    showToast('重启失败', 'error');
+                }
+            } catch (e) {
+                showToast('重启失败: ' + e.message, 'error');
+            }
+        },
+
+        resetForm() {
+            if (this.originalData) {
+                this.formData = JSON.parse(JSON.stringify(this.originalData));
+                this.corsOriginsText = Array.isArray(this.originalData.cors_origins)
+                    ? this.originalData.cors_origins.join(', ')
+                    : '*';
+            }
+            showToast('已重置为上次保存的配置', 'info');
+        },
+
+        applyPreset(preset) {
+            const presets = {
+                openai: { openai_base_url: 'https://api.openai.com/v1', host: '0.0.0.0', port: 8080 },
+                localai: { openai_base_url: 'http://localhost:8080/v1', host: '0.0.0.0', port: 8081 },
+                ollama: { openai_base_url: 'http://localhost:11434/v1', host: '0.0.0.0', port: 8082 },
+                vllm: { openai_base_url: 'http://localhost:8000/v1', host: '0.0.0.0', port: 8083 }
+            };
+
+            if (presets[preset]) {
+                Object.assign(this.formData, presets[preset]);
+                showToast(`已应用 ${preset} 预设`, 'info');
+            }
+        },
+
+        openConfigFile() {
+            showToast('请在终端中打开: ' + this.configPath, 'info');
+        },
+
+        formatTime(timestamp) {
+            if (!timestamp) return '未知';
+            return new Date(timestamp * 1000).toLocaleString('zh-CN');
+        }
+    }
+}
+</script>
+{% endblock %}
