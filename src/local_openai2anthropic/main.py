@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from local_openai2anthropic.config import Settings, get_config_file, get_settings
 from local_openai2anthropic.protocol import AnthropicError, AnthropicErrorResponse
 from local_openai2anthropic.router import router
+from local_openai2anthropic.web import web_router
 
 
 def get_default_log_dir() -> str:
@@ -119,7 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="local-openai2anthropic",
         description="A proxy server that converts Anthropic Messages API to OpenAI API",
-        version="0.5.8",
+        version="0.6.0",
         docs_url="/docs",
         redoc_url="/redoc",
     )
@@ -135,6 +136,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=settings.cors_methods,
         allow_headers=settings.cors_headers,
     )
+
+    # Add request/error counting middleware for dashboard stats
+    from local_openai2anthropic.web.routes import record_request
+
+    @app.middleware("http")
+    async def stats_middleware(request: Request, call_next):
+        """Count API requests and errors for dashboard statistics."""
+        # Only count actual API calls, not web UI or docs
+        path = request.url.path
+        if not path.startswith("/v1/") and path not in ("/health", "/count_tokens"):
+            return await call_next(request)
+
+        response = await call_next(request)
+        is_error = response.status_code >= 400
+        record_request(is_error=is_error)
+        return response
 
     # Add API key authentication middleware if configured
     if settings.api_key:
@@ -176,6 +193,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Include routers
     app.include_router(router)
+    app.include_router(web_router)
 
     # Exception handlers
     @app.exception_handler(HTTPException)
@@ -271,7 +289,7 @@ Examples:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.5.7",
+        version="%(prog)s 0.6.0",
     )
 
     # Create subparsers for commands

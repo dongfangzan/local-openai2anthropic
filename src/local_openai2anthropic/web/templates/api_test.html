@@ -1,0 +1,375 @@
+{% extends "base.html" %}
+
+{% block title %}API 测试 - OA2A Proxy{% endblock %}
+{% block page_title %}API 测试{% endblock %}
+{% block page_subtitle %}测试代理服务器的 API 端点{% endblock %}
+
+{% block content %}
+<div x-data="apiTester()" x-init="init()">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Request Panel -->
+        <div class="space-y-6">
+            <!-- Quick Endpoints -->
+            <div class="glass-card rounded-2xl p-6">
+                <h3 class="text-sm font-bold text-stone-900 mb-4">快速端点</h3>
+                <div class="grid grid-cols-2 gap-3">
+                    <button @click="selectEndpoint('health')"
+                            class="px-4 py-3 text-left text-sm bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 rounded-xl transition cursor-pointer flex items-center gap-2.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-teal-500"></span>
+                        <span class="text-stone-700 font-mono text-xs font-medium">GET /health</span>
+                    </button>
+                    <button @click="selectEndpoint('models')"
+                            class="px-4 py-3 text-left text-sm bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 rounded-xl transition cursor-pointer flex items-center gap-2.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
+                        <span class="text-stone-700 font-mono text-xs font-medium">GET /v1/models</span>
+                    </button>
+                    <button @click="selectEndpoint('messages')"
+                            class="px-4 py-3 text-left text-sm bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 rounded-xl transition cursor-pointer flex items-center gap-2.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-brand-500"></span>
+                        <span class="text-stone-700 font-mono text-xs font-medium">POST /v1/messages</span>
+                    </button>
+                    <button @click="selectEndpoint('count_tokens')"
+                            class="px-4 py-3 text-left text-sm bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 rounded-xl transition cursor-pointer flex items-center gap-2.5">
+                        <span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                        <span class="text-stone-700 font-mono text-xs font-medium">POST /count_tokens</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Request Configuration -->
+            <div class="glass-card rounded-2xl p-6">
+                <h3 class="text-sm font-bold text-stone-900 mb-4">请求配置</h3>
+                <div class="space-y-5">
+                    <!-- Method & URL -->
+                    <div class="flex gap-3">
+                        <select x-model="request.method"
+                                class="input-field px-4 py-2.5 rounded-xl text-sm text-stone-700 font-semibold">
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="PUT">PUT</option>
+                            <option value="DELETE">DELETE</option>
+                        </select>
+                        <input type="text" x-model="request.url"
+                               class="input-field flex-1 px-4 py-2.5 rounded-xl text-sm text-stone-700 font-mono placeholder-stone-300"
+                               placeholder="/v1/messages">
+                    </div>
+
+                    <!-- Headers -->
+                    <div>
+                        <label class="block text-sm font-semibold text-stone-700 mb-2">请求头</label>
+                        <div class="space-y-2">
+                            <template x-for="(header, index) in request.headers" :key="index">
+                                <div class="flex gap-2">
+                                    <input type="text" x-model="header.key" placeholder="Key"
+                                           class="input-field flex-1 px-3 py-2 rounded-lg text-xs text-stone-700 font-mono placeholder-stone-300">
+                                    <input type="text" x-model="header.value" placeholder="Value"
+                                           class="input-field flex-1 px-3 py-2 rounded-lg text-xs text-stone-700 font-mono placeholder-stone-300">
+                                    <button @click="removeHeader(index)"
+                                            class="px-2 text-stone-400 hover:text-red-500 transition cursor-pointer">
+                                        <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <line x1="18" y1="6" x2="6" y2="18"/>
+                                            <line x1="6" y1="6" x2="18" y2="18"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </template>
+                            <button @click="addHeader()"
+                                    class="text-xs text-brand-500 hover:text-brand-600 font-semibold transition cursor-pointer">
+                                + 添加请求头
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Body -->
+                    <div x-show="request.method === 'POST' || request.method === 'PUT'">
+                        <label class="block text-sm font-semibold text-stone-700 mb-2">请求体 (JSON)</label>
+                        <textarea x-model="request.body"
+                                  rows="10"
+                                  class="input-field w-full px-4 py-3 rounded-xl text-xs text-stone-700 font-mono placeholder-stone-300 resize-none"
+                                  placeholder='{"model": "gpt-3.5-turbo", "messages": [{"role": "user", "content": "Hello!"}]}'></textarea>
+                    </div>
+
+                    <!-- Send Button -->
+                    <button @click="sendRequest()"
+                            :disabled="sending"
+                            class="btn-primary w-full px-6 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer">
+                        <span x-text="sending ? '发送中...' : '发送请求'"></span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Request History -->
+            <div class="glass-card rounded-2xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-bold text-stone-900">请求历史</h3>
+                    <button @click="clearHistory()"
+                            class="text-xs text-stone-400 hover:text-stone-600 font-semibold transition cursor-pointer">
+                        清除
+                    </button>
+                </div>
+                <div class="space-y-2 max-h-48 overflow-auto">
+                    <template x-for="(item, index) in history" :key="index">
+                        <button @click="loadFromHistory(item)"
+                                class="w-full px-4 py-2.5 text-left text-sm bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 rounded-xl transition cursor-pointer flex items-center justify-between">
+                            <div class="flex items-center gap-2.5">
+                                <span class="font-mono font-bold text-xs" :class="{
+                                    'text-teal-500': item.method === 'GET',
+                                    'text-indigo-500': item.method === 'POST',
+                                    'text-amber-500': item.method === 'PUT',
+                                    'text-red-500': item.method === 'DELETE'
+                                }" x-text="item.method"></span>
+                                <span class="text-stone-500 font-mono text-xs truncate" x-text="item.url"></span>
+                            </div>
+                            <span class="text-[10px] text-stone-400" x-text="item.time"></span>
+                        </button>
+                    </template>
+                    <div x-show="history.length === 0" class="text-center py-6 text-stone-400 text-sm">
+                        暂无请求历史
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Response Panel -->
+        <div class="space-y-6">
+            <!-- Response Status -->
+            <div class="glass-card rounded-2xl p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-bold text-stone-900">响应</h3>
+                    <div class="flex items-center gap-4" x-show="response">
+                        <span class="badge"
+                              :class="{
+                                  'bg-teal-50 text-teal-600': response?.status >= 200 && response?.status < 300,
+                                  'bg-amber-50 text-amber-600': response?.status >= 300 && response?.status < 400,
+                                  'bg-red-50 text-red-600': response?.status >= 400
+                              }">
+                            <span x-text="response?.status"></span>
+                            <span x-text="response?.statusText"></span>
+                        </span>
+                        <span class="text-xs text-stone-400 font-mono">
+                            <span x-text="response?.time + 'ms'"></span>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Response Tabs -->
+                <div x-show="response">
+                    <div class="flex gap-4 border-b border-stone-200 mb-4">
+                        <button @click="responseTab = 'body'"
+                                class="pb-2.5 px-1 text-sm font-semibold transition cursor-pointer"
+                                :class="responseTab === 'body' ? 'text-brand-500 border-b-2 border-brand-500' : 'text-stone-400 hover:text-stone-600'">
+                            响应体
+                        </button>
+                        <button @click="responseTab = 'headers'"
+                                class="pb-2.5 px-1 text-sm font-semibold transition cursor-pointer"
+                                :class="responseTab === 'headers' ? 'text-brand-500 border-b-2 border-brand-500' : 'text-stone-400 hover:text-stone-600'">
+                            响应头
+                        </button>
+                    </div>
+
+                    <!-- Response Body -->
+                    <div x-show="responseTab === 'body'" class="relative">
+                        <pre class="bg-stone-900 text-stone-200 p-5 rounded-xl overflow-auto max-h-96 text-xs font-mono leading-relaxed"><code x-text="formatJson(response?.body)"></code></pre>
+                        <button @click="copyResponse()"
+                                class="absolute top-3 right-3 px-3 py-1.5 bg-stone-700 text-stone-300 rounded-lg text-[10px] hover:bg-stone-600 transition cursor-pointer font-semibold">
+                            复制
+                        </button>
+                    </div>
+
+                    <!-- Response Headers -->
+                    <div x-show="responseTab === 'headers'" class="space-y-0">
+                        <template x-for="(value, key) in response?.headers" :key="key">
+                            <div class="flex py-2.5 border-b border-stone-100">
+                                <span class="w-44 text-sm font-semibold text-stone-700" x-text="key"></span>
+                                <span class="flex-1 text-sm text-stone-500 font-mono break-all" x-text="value"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Loading -->
+                <div x-show="sending" class="text-center py-16">
+                    <svg class="w-8 h-8 text-brand-400 mx-auto animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
+                        <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+                    </svg>
+                    <p class="text-stone-400 mt-3 text-sm">请求处理中...</p>
+                </div>
+
+                <!-- Empty State -->
+                <div x-show="!response && !sending" class="text-center py-16">
+                    <div class="w-16 h-16 rounded-2xl bg-stone-100 flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                        </svg>
+                    </div>
+                    <p class="text-stone-500 text-sm">发送请求以查看响应</p>
+                </div>
+            </div>
+
+            <!-- Example Requests -->
+            <div class="glass-card rounded-2xl p-6">
+                <h3 class="text-sm font-bold text-stone-900 mb-4">示例请求</h3>
+                <div class="space-y-2">
+                    <button @click="loadExample('simple_message')"
+                            class="w-full px-4 py-3 text-left bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 rounded-xl transition cursor-pointer">
+                        <p class="text-sm font-semibold text-stone-700">简单消息</p>
+                        <p class="text-xs text-stone-400 mt-0.5">发送一条简单的文本消息</p>
+                    </button>
+                    <button @click="loadExample('streaming')"
+                            class="w-full px-4 py-3 text-left bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 rounded-xl transition cursor-pointer">
+                        <p class="text-sm font-semibold text-stone-700">流式响应</p>
+                        <p class="text-xs text-stone-400 mt-0.5">使用 SSE 流式返回响应</p>
+                    </button>
+                    <button @click="loadExample('with_tools')"
+                            class="w-full px-4 py-3 text-left bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 rounded-xl transition cursor-pointer">
+                        <p class="text-sm font-semibold text-stone-700">工具调用</p>
+                        <p class="text-xs text-stone-400 mt-0.5">包含工具定义的请求</p>
+                    </button>
+                    <button @click="loadExample('vision')"
+                            class="w-full px-4 py-3 text-left bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 rounded-xl transition cursor-pointer">
+                        <p class="text-sm font-semibold text-stone-700">视觉模型</p>
+                        <p class="text-xs text-stone-400 mt-0.5">包含图片的多模态请求</p>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function apiTester() {
+    return {
+        request: {
+            method: 'GET',
+            url: '/health',
+            headers: [{ key: 'Content-Type', value: 'application/json' }],
+            body: ''
+        },
+        response: null,
+        responseTab: 'body',
+        sending: false,
+        history: [],
+
+        endpoints: {
+            health: { method: 'GET', url: '/health', body: '' },
+            models: { method: 'GET', url: '/v1/models', body: '' },
+            messages: {
+                method: 'POST', url: '/v1/messages',
+                body: JSON.stringify({ model: 'gpt-3.5-turbo', max_tokens: 1024, messages: [{ role: 'user', content: 'Hello! How are you?' }] }, null, 2)
+            },
+            count_tokens: {
+                method: 'POST', url: '/v1/messages/count_tokens',
+                body: JSON.stringify({ model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: 'Hello!' }] }, null, 2)
+            }
+        },
+
+        examples: {
+            simple_message: {
+                method: 'POST', url: '/v1/messages',
+                body: JSON.stringify({ model: 'gpt-3.5-turbo', max_tokens: 1024, messages: [{ role: 'user', content: 'Hello! How are you?' }] }, null, 2)
+            },
+            streaming: {
+                method: 'POST', url: '/v1/messages',
+                body: JSON.stringify({ model: 'gpt-3.5-turbo', max_tokens: 1024, stream: true, messages: [{ role: 'user', content: 'Tell me a short story' }] }, null, 2)
+            },
+            with_tools: {
+                method: 'POST', url: '/v1/messages',
+                body: JSON.stringify({
+                    model: 'gpt-3.5-turbo', max_tokens: 1024,
+                    tools: [{ name: 'get_weather', description: 'Get the current weather in a location', input_schema: { type: 'object', properties: { location: { type: 'string', description: 'The city name' } }, required: ['location'] } }],
+                    messages: [{ role: 'user', content: 'What is the weather in San Francisco?' }]
+                }, null, 2)
+            },
+            vision: {
+                method: 'POST', url: '/v1/messages',
+                body: JSON.stringify({
+                    model: 'gpt-4-vision-preview', max_tokens: 1024,
+                    messages: [{ role: 'user', content: [{ type: 'text', text: 'What is in this image?' }, { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'BASE64_ENCODED_IMAGE_HERE' } }] }]
+                }, null, 2)
+            }
+        },
+
+        init() {
+            const saved = localStorage.getItem('api_test_history');
+            if (saved) this.history = JSON.parse(saved);
+        },
+
+        selectEndpoint(name) {
+            const endpoint = this.endpoints[name];
+            if (endpoint) {
+                this.request.method = endpoint.method;
+                this.request.url = endpoint.url;
+                this.request.body = endpoint.body;
+            }
+        },
+
+        loadExample(name) {
+            const example = this.examples[name];
+            if (example) {
+                this.request.method = example.method;
+                this.request.url = example.url;
+                this.request.body = example.body;
+            }
+        },
+
+        addHeader() { this.request.headers.push({ key: '', value: '' }); },
+        removeHeader(index) { this.request.headers.splice(index, 1); },
+
+        async sendRequest() {
+            this.sending = true;
+            this.response = null;
+            const startTime = Date.now();
+            try {
+                const headers = {};
+                this.request.headers.forEach(h => { if (h.key && h.value) headers[h.key] = h.value; });
+                const options = { method: this.request.method, headers };
+                if ((this.request.method === 'POST' || this.request.method === 'PUT') && this.request.body) options.body = this.request.body;
+                const res = await fetch(this.request.url, options);
+                let body;
+                const ct = res.headers.get('content-type');
+                body = (ct && ct.includes('application/json')) ? await res.json() : await res.text();
+                const responseHeaders = {};
+                res.headers.forEach((v, k) => responseHeaders[k] = v);
+                this.response = { status: res.status, statusText: res.statusText, headers: responseHeaders, body, time: Date.now() - startTime };
+                this.addToHistory();
+            } catch (e) {
+                this.response = { status: 0, statusText: 'Error', headers: {}, body: { error: e.message }, time: Date.now() - startTime };
+            } finally {
+                this.sending = false;
+            }
+        },
+
+        addToHistory() {
+            const item = { method: this.request.method, url: this.request.url, body: this.request.body, headers: [...this.request.headers], time: new Date().toLocaleTimeString('zh-CN'), status: this.response?.status };
+            this.history.unshift(item);
+            if (this.history.length > 20) this.history.pop();
+            localStorage.setItem('api_test_history', JSON.stringify(this.history));
+        },
+
+        loadFromHistory(item) {
+            this.request.method = item.method;
+            this.request.url = item.url;
+            this.request.body = item.body || '';
+            this.request.headers = item.headers ? [...item.headers] : [{ key: 'Content-Type', value: 'application/json' }];
+        },
+
+        clearHistory() {
+            this.history = [];
+            localStorage.removeItem('api_test_history');
+            showToast('历史已清除', 'info');
+        },
+
+        formatJson(data) {
+            if (typeof data === 'string') { try { return JSON.stringify(JSON.parse(data), null, 2); } catch { return data; } }
+            return JSON.stringify(data, null, 2);
+        },
+
+        copyResponse() {
+            const text = typeof this.response.body === 'string' ? this.response.body : JSON.stringify(this.response.body, null, 2);
+            navigator.clipboard.writeText(text).then(() => showToast('已复制到剪贴板', 'success'));
+        }
+    }
+}
+</script>
+{% endblock %}

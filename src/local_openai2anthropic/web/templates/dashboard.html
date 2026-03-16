@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+
+{% block title %}仪表板 - OA2A Proxy{% endblock %}
+{% block page_title %}仪表板{% endblock %}
+{% block page_subtitle %}监控和管理你的 OA2A 代理服务器{% endblock %}
+
+{% block content %}
+<div x-data="dashboard()" x-init="init()">
+    <!-- Stats Row -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+        <!-- Server Status -->
+        <div class="stat-card rounded-2xl p-5">
+            <div class="flex items-start justify-between mb-3">
+                <span class="text-[11px] font-semibold text-stone-400 uppercase tracking-wider">服务状态</span>
+                <div class="w-8 h-8 rounded-xl flex items-center justify-center"
+                     :class="serverStatus.running ? 'bg-teal-50' : 'bg-red-50'">
+                    <svg class="w-4 h-4" :class="serverStatus.running ? 'text-teal-500' : 'text-red-500'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+                        <polyline points="22 4 12 14.01 9 11.01"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="text-2xl font-bold"
+                 :class="serverStatus.running ? 'text-teal-600' : 'text-red-500'"
+                 x-text="serverStatus.running ? '运行中' : '已停止'"></div>
+            <div class="mt-2 text-xs text-stone-400 font-mono" x-show="serverStatus.pid">
+                PID <span x-text="serverStatus.pid"></span>
+            </div>
+        </div>
+
+        <!-- Uptime -->
+        <div class="stat-card rounded-2xl p-5">
+            <div class="flex items-start justify-between mb-3">
+                <span class="text-[11px] font-semibold text-stone-400 uppercase tracking-wider">运行时间</span>
+                <div class="w-8 h-8 rounded-xl bg-brand-50 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-brand-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="text-2xl font-bold text-stone-900 font-mono" x-text="formatUptime(serverStatus.uptime)"></div>
+            <div class="mt-2 text-xs text-stone-400">
+                启动于 <span class="font-mono" x-text="formatTime(serverStatus.started_at)"></span>
+            </div>
+        </div>
+
+        <!-- Requests Today -->
+        <div class="stat-card rounded-2xl p-5">
+            <div class="flex items-start justify-between mb-3">
+                <span class="text-[11px] font-semibold text-stone-400 uppercase tracking-wider">今日请求</span>
+                <div class="w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center">
+                    <svg class="w-4 h-4 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="text-2xl font-bold text-stone-900 font-mono" x-text="stats.today_requests"></div>
+            <div class="mt-2 text-xs font-mono"
+                 :class="stats.request_change >= 0 ? 'text-teal-600' : 'text-red-500'">
+                <span x-text="(stats.request_change >= 0 ? '+' : '') + stats.request_change + '%'"></span>
+                <span class="text-stone-400"> 较昨日</span>
+            </div>
+        </div>
+
+        <!-- Error Rate -->
+        <div class="stat-card rounded-2xl p-5">
+            <div class="flex items-start justify-between mb-3">
+                <span class="text-[11px] font-semibold text-stone-400 uppercase tracking-wider">错误率</span>
+                <div class="w-8 h-8 rounded-xl flex items-center justify-center"
+                     :class="stats.error_rate > 5 ? 'bg-red-50' : 'bg-teal-50'">
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+                         :class="stats.error_rate > 5 ? 'text-red-500' : 'text-teal-500'">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/>
+                        <line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                </div>
+            </div>
+            <div class="text-2xl font-bold font-mono"
+                 :class="stats.error_rate > 5 ? 'text-red-500' : 'text-teal-600'"
+                 x-text="stats.error_rate + '%'"></div>
+            <div class="mt-2 text-xs text-stone-400">
+                <span x-text="stats.today_errors"></span> 个错误
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Configuration -->
+        <div class="lg:col-span-2 glass-card rounded-2xl p-6">
+            <div class="flex items-center justify-between mb-5">
+                <h3 class="text-sm font-bold text-stone-900">配置概览</h3>
+                <a href="/config" class="text-xs text-brand-500 hover:text-brand-600 font-semibold transition flex items-center gap-1 cursor-pointer">
+                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                    编辑
+                </a>
+            </div>
+            <div class="space-y-0">
+                <div class="flex items-center justify-between py-3 border-b border-stone-100">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
+                            <svg class="w-4 h-4 text-indigo-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm font-semibold text-stone-800">Base URL</p>
+                            <p class="text-[11px] text-stone-400">上游 API 端点</p>
+                        </div>
+                    </div>
+                    <span class="text-xs text-stone-500 font-mono truncate max-w-[200px]" x-text="config.openai_base_url"></span>
+                </div>
+                <div class="flex items-center justify-between py-3 border-b border-stone-100">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-xl bg-teal-50 flex items-center justify-center">
+                            <svg class="w-4 h-4 text-teal-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm font-semibold text-stone-800">API 密钥</p>
+                            <p class="text-[11px] text-stone-400">OpenAI API Key</p>
+                        </div>
+                    </div>
+                    <span class="text-xs font-semibold px-2.5 py-1 rounded-full"
+                          :class="config.openai_api_key ? 'bg-teal-50 text-teal-600' : 'bg-red-50 text-red-500'"
+                          x-text="config.openai_api_key ? '已配置' : '未设置'"></span>
+                </div>
+                <div class="flex items-center justify-between py-3 border-b border-stone-100">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
+                            <svg class="w-4 h-4 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>
+                                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"/>
+                                <line x1="6" y1="6" x2="6.01" y2="6"/>
+                                <line x1="6" y1="18" x2="6.01" y2="18"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm font-semibold text-stone-800">监听地址</p>
+                            <p class="text-[11px] text-stone-400">Host:Port</p>
+                        </div>
+                    </div>
+                    <span class="text-xs text-stone-500 font-mono" x-text="config.host + ':' + config.port"></span>
+                </div>
+                <div class="flex items-center justify-between py-3">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-xl bg-cyan-50 flex items-center justify-center">
+                            <svg class="w-4 h-4 text-cyan-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="11" cy="11" r="8"/>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="text-sm font-semibold text-stone-800">Web 搜索</p>
+                            <p class="text-[11px] text-stone-400">Tavily 集成</p>
+                        </div>
+                    </div>
+                    <span class="text-xs font-semibold px-2.5 py-1 rounded-full"
+                          :class="config.tavily_api_key ? 'bg-teal-50 text-teal-600' : 'bg-stone-100 text-stone-400'"
+                          x-text="config.tavily_api_key ? '已启用' : '未启用'"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="glass-card rounded-2xl p-6">
+            <h3 class="text-sm font-bold text-stone-900 mb-5">快捷操作</h3>
+            <div class="space-y-3">
+                <button @click="restartServer()"
+                        class="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 transition cursor-pointer group">
+                    <div class="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-indigo-500 group-hover:text-indigo-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"/>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                        </svg>
+                    </div>
+                    <div class="text-left">
+                        <p class="text-sm font-semibold text-stone-800">重启服务器</p>
+                        <p class="text-[11px] text-stone-400">重新加载配置</p>
+                    </div>
+                </button>
+                <a href="/logs" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 transition cursor-pointer group">
+                    <div class="w-9 h-9 rounded-xl bg-teal-50 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-teal-500 group-hover:text-teal-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                    </div>
+                    <div class="text-left">
+                        <p class="text-sm font-semibold text-stone-800">查看日志</p>
+                        <p class="text-[11px] text-stone-400">实时日志监控</p>
+                    </div>
+                </a>
+                <a href="/api-test" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 transition cursor-pointer group">
+                    <div class="w-9 h-9 rounded-xl bg-amber-50 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-amber-500 group-hover:text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="16 18 22 12 16 6"/>
+                            <polyline points="8 6 2 12 8 18"/>
+                        </svg>
+                    </div>
+                    <div class="text-left">
+                        <p class="text-sm font-semibold text-stone-800">API 测试</p>
+                        <p class="text-[11px] text-stone-400">测试 API 端点</p>
+                    </div>
+                </a>
+                <a href="/docs" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-white hover:bg-stone-50 border border-stone-200 hover:border-stone-300 transition cursor-pointer group">
+                    <div class="w-9 h-9 rounded-xl bg-cyan-50 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-cyan-500 group-hover:text-cyan-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                        </svg>
+                    </div>
+                    <div class="text-left">
+                        <p class="text-sm font-semibold text-stone-800">API 文档</p>
+                        <p class="text-[11px] text-stone-400">Swagger UI</p>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Logs -->
+    <div class="mt-6 glass-card rounded-2xl p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-bold text-stone-900">最近日志</h3>
+            <a href="/logs" class="text-xs text-brand-500 hover:text-brand-600 font-semibold transition flex items-center gap-1 cursor-pointer">
+                查看全部
+                <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                    <polyline points="12 5 19 12 12 19"/>
+                </svg>
+            </a>
+        </div>
+        <div class="bg-stone-900 rounded-xl p-4 max-h-56 overflow-auto font-mono text-[11px]">
+            <template x-for="log in recentLogs" :key="log.id">
+                <div class="py-0.5 flex gap-3">
+                    <span class="text-stone-500 w-44 flex-shrink-0" x-text="log.timestamp"></span>
+                    <span class="w-16 flex-shrink-0 font-semibold" :class="{
+                        'text-teal-400': log.level === 'INFO',
+                        'text-amber-400': log.level === 'WARNING',
+                        'text-red-400': log.level === 'ERROR',
+                        'text-indigo-400': log.level === 'DEBUG'
+                    }" x-text="log.level"></span>
+                    <span class="text-stone-400 flex-1 truncate" x-text="log.message"></span>
+                </div>
+            </template>
+            <div x-show="recentLogs.length === 0" class="text-stone-500 text-center py-6">
+                <span class="font-sans text-sm">暂无日志</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function dashboard() {
+    return {
+        serverStatus: { running: false, pid: null, uptime: 0, started_at: null },
+        config: { openai_base_url: '', openai_api_key: '', host: '', port: 8080, tavily_api_key: '' },
+        stats: { today_requests: 0, request_change: 0, today_errors: 0, error_rate: 0 },
+        recentLogs: [],
+
+        async init() {
+            await Promise.all([
+                this.fetchServerStatus(),
+                this.fetchConfig(),
+                this.fetchStats(),
+                this.fetchRecentLogs()
+            ]);
+        },
+
+        async fetchServerStatus() {
+            try {
+                const r = await fetch('/api/status');
+                this.serverStatus = await r.json();
+            } catch (e) { console.error(e); }
+        },
+
+        async fetchConfig() {
+            try {
+                const r = await fetch('/api/config');
+                this.config = await r.json();
+            } catch (e) { console.error(e); }
+        },
+
+        async fetchStats() {
+            try {
+                const r = await fetch('/api/stats');
+                this.stats = await r.json();
+            } catch (e) { console.error(e); }
+        },
+
+        async fetchRecentLogs() {
+            try {
+                const r = await fetch('/api/logs?lines=10');
+                this.recentLogs = await r.json();
+            } catch (e) { console.error(e); }
+        },
+
+        async restartServer() {
+            if (!confirm('确定要重启服务器吗？')) return;
+            try {
+                const r = await fetch('/api/restart', { method: 'POST' });
+                if (r.ok) {
+                    showToast('服务器正在重启...', 'success');
+                    setTimeout(() => location.reload(), 2000);
+                } else {
+                    const data = await r.json();
+                    showToast(data.message || '重启失败', 'error');
+                }
+            } catch (e) {
+                showToast('重启失败: ' + e.message, 'error');
+            }
+        },
+
+        formatUptime(seconds) {
+            if (!seconds) return '0s';
+            const d = Math.floor(seconds / 86400);
+            const h = Math.floor((seconds % 86400) / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            if (d > 0) return d + 'd ' + h + 'h ' + m + 'm';
+            if (h > 0) return h + 'h ' + m + 'm';
+            return m + 'm';
+        },
+
+        formatTime(ts) {
+            if (!ts) return '—';
+            const d = new Date(ts * 1000);
+            const pad = n => String(n).padStart(2, '0');
+            return d.getFullYear() + '/' + pad(d.getMonth()+1) + '/' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        }
+    }
+}
+</script>
+{% endblock %}

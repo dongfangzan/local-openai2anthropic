@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+
+{% block title %}日志查看 - OA2A Proxy{% endblock %}
+{% block page_title %}日志查看{% endblock %}
+{% block page_subtitle %}实时查看服务器和 API 日志{% endblock %}
+
+{% block content %}
+<div x-data="logViewer()" x-init="init()">
+    <!-- Controls -->
+    <div class="glass-card rounded-2xl p-5 mb-6">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-4 flex-wrap">
+                <!-- Log Type -->
+                <div class="flex items-center gap-2">
+                    <label class="text-xs font-semibold text-stone-600">日志类型</label>
+                    <select x-model="logType" @change="fetchLogs()"
+                            class="input-field px-3 py-2 rounded-xl text-xs text-stone-700">
+                        <option value="server">服务器日志</option>
+                        <option value="api">API 日志</option>
+                    </select>
+                </div>
+
+                <!-- Log Level Filter -->
+                <div class="flex items-center gap-2">
+                    <label class="text-xs font-semibold text-stone-600">级别</label>
+                    <select x-model="logLevel" @change="filterLogs()"
+                            class="input-field px-3 py-2 rounded-xl text-xs text-stone-700">
+                        <option value="all">全部</option>
+                        <option value="DEBUG">DEBUG</option>
+                        <option value="INFO">INFO</option>
+                        <option value="WARNING">WARNING</option>
+                        <option value="ERROR">ERROR</option>
+                    </select>
+                </div>
+
+                <!-- Lines -->
+                <div class="flex items-center gap-2">
+                    <label class="text-xs font-semibold text-stone-600">行数</label>
+                    <select x-model="lines" @change="fetchLogs()"
+                            class="input-field px-3 py-2 rounded-xl text-xs text-stone-700">
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                        <option value="500">500</option>
+                    </select>
+                </div>
+
+                <!-- Search -->
+                <div class="relative">
+                    <svg class="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input type="text" x-model="searchQuery" @input="filterLogs()"
+                           placeholder="搜索日志..."
+                           class="input-field pl-9 pr-3 py-2 rounded-xl text-xs text-stone-700 placeholder-stone-300 w-44">
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <!-- Auto Refresh -->
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" x-model="autoRefresh"
+                           class="w-4 h-4 rounded border-stone-300 text-brand-500 focus:ring-brand-500 focus:ring-offset-0">
+                    <span class="text-xs font-semibold text-stone-600">自动刷新</span>
+                </label>
+
+                <!-- Refresh Button -->
+                <button @click="fetchLogs()"
+                        class="btn-primary px-4 py-2 rounded-xl text-xs font-semibold text-white cursor-pointer">
+                    刷新
+                </button>
+
+                <!-- Clear Button -->
+                <button @click="clearLogs()"
+                        class="btn-secondary px-4 py-2 rounded-xl text-xs font-semibold text-stone-600 cursor-pointer">
+                    清除
+                </button>
+
+                <!-- Download Button -->
+                <button @click="downloadLogs()"
+                        class="btn-secondary px-4 py-2 rounded-xl text-xs font-semibold text-stone-600 cursor-pointer">
+                    下载
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Log Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+        <div class="stat-card rounded-xl p-4">
+            <p class="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-1">总行数</p>
+            <p class="text-xl font-bold text-stone-900 font-mono" x-text="filteredLogs.length"></p>
+        </div>
+        <div class="stat-card rounded-xl p-4">
+            <p class="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-1">DEBUG</p>
+            <p class="text-xl font-bold text-indigo-500 font-mono" x-text="logStats.debug"></p>
+        </div>
+        <div class="stat-card rounded-xl p-4">
+            <p class="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-1">INFO</p>
+            <p class="text-xl font-bold text-teal-500 font-mono" x-text="logStats.info"></p>
+        </div>
+        <div class="stat-card rounded-xl p-4">
+            <p class="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-1">WARNING</p>
+            <p class="text-xl font-bold text-amber-500 font-mono" x-text="logStats.warning"></p>
+        </div>
+        <div class="stat-card rounded-xl p-4">
+            <p class="text-[10px] font-semibold text-stone-400 uppercase tracking-wider mb-1">ERROR</p>
+            <p class="text-xl font-bold text-red-500 font-mono" x-text="logStats.error"></p>
+        </div>
+    </div>
+
+    <!-- Log Display -->
+    <div class="bg-stone-900 rounded-2xl overflow-hidden shadow-lg">
+        <!-- Log Header -->
+        <div class="bg-stone-800 px-5 py-3 flex items-center justify-between border-b border-stone-700">
+            <div class="flex items-center gap-2.5">
+                <span class="w-3 h-3 rounded-full bg-red-400"></span>
+                <span class="w-3 h-3 rounded-full bg-amber-400"></span>
+                <span class="w-3 h-3 rounded-full bg-teal-400"></span>
+                <span class="text-stone-400 text-xs ml-3 font-mono" x-text="logType === 'server' ? 'server.log' : 'api.log'"></span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button @click="scrollToTop()"
+                        class="text-stone-400 hover:text-white text-xs px-3 py-1.5 rounded-lg hover:bg-stone-700 transition cursor-pointer">
+                    顶部
+                </button>
+                <button @click="scrollToBottom()"
+                        class="text-stone-400 hover:text-white text-xs px-3 py-1.5 rounded-lg hover:bg-stone-700 transition cursor-pointer">
+                    底部
+                </button>
+            </div>
+        </div>
+
+        <!-- Log Content -->
+        <div id="log-container" class="h-[600px] overflow-auto p-4">
+            <template x-for="log in filteredLogs" :key="log.id">
+                <div class="py-0.5 hover:bg-stone-800/50 px-2 -mx-2 rounded flex gap-3 font-mono text-[11px]"
+                     :class="{
+                         'bg-red-500/5': log.level === 'ERROR',
+                         'bg-amber-500/5': log.level === 'WARNING'
+                     }">
+                    <span class="text-stone-500 w-44 flex-shrink-0" x-text="log.timestamp"></span>
+                    <span class="w-16 flex-shrink-0 font-semibold" :class="{
+                        'text-teal-400': log.level === 'INFO',
+                        'text-amber-400': log.level === 'WARNING',
+                        'text-red-400': log.level === 'ERROR',
+                        'text-indigo-400': log.level === 'DEBUG'
+                    }" x-text="log.level"></span>
+                    <span class="text-stone-400 flex-1 whitespace-pre-wrap break-all" x-text="log.message"></span>
+                </div>
+            </template>
+
+            <!-- Loading -->
+            <div x-show="loading" class="text-center py-16">
+                <svg class="w-8 h-8 text-brand-400 mx-auto animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" stroke-opacity="0.25"/>
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+                </svg>
+                <p class="text-stone-500 mt-3 text-sm">加载日志中...</p>
+            </div>
+
+            <!-- Empty -->
+            <div x-show="!loading && filteredLogs.length === 0" class="text-center py-16">
+                <svg class="w-10 h-10 text-stone-600 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                </svg>
+                <p class="text-stone-500 mt-3 text-sm">暂无日志</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Log Info -->
+    <div class="mt-5 bg-brand-50 border border-brand-100 rounded-2xl p-5">
+        <div class="flex items-start gap-3">
+            <svg class="w-5 h-5 text-brand-500 mt-0.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="16" x2="12" y2="12"/>
+                <line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+            <div class="text-sm text-brand-700">
+                <p class="font-semibold text-brand-800 mb-1">日志说明</p>
+                <ul class="space-y-0.5 text-xs text-brand-600">
+                    <li>服务器日志包含所有系统运行信息</li>
+                    <li>API 日志仅包含 API 请求和响应</li>
+                    <li>日志文件每天自动轮转，保留最近 2 天</li>
+                    <li>自动刷新间隔为 5 秒</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function logViewer() {
+    return {
+        logs: [],
+        filteredLogs: [],
+        logType: 'server',
+        logLevel: 'all',
+        lines: '100',
+        searchQuery: '',
+        autoRefresh: false,
+        loading: false,
+        refreshInterval: null,
+        logStats: { debug: 0, info: 0, warning: 0, error: 0 },
+
+        async init() {
+            await this.fetchLogs();
+        },
+
+        async fetchLogs() {
+            this.loading = true;
+            try {
+                const response = await fetch(`/api/logs?type=${this.logType}&lines=${this.lines}`);
+                this.logs = await response.json();
+                this.filterLogs();
+            } catch (e) {
+                console.error('Failed to fetch logs:', e);
+                showToast('获取日志失败', 'error');
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        filterLogs() {
+            let filtered = [...this.logs];
+            if (this.logLevel !== 'all') {
+                filtered = filtered.filter(log => log.level === this.logLevel);
+            }
+            if (this.searchQuery) {
+                const query = this.searchQuery.toLowerCase();
+                filtered = filtered.filter(log =>
+                    log.message.toLowerCase().includes(query) ||
+                    log.timestamp.toLowerCase().includes(query)
+                );
+            }
+            this.filteredLogs = filtered;
+            this.updateStats();
+        },
+
+        updateStats() {
+            this.logStats = {
+                debug: this.logs.filter(l => l.level === 'DEBUG').length,
+                info: this.logs.filter(l => l.level === 'INFO').length,
+                warning: this.logs.filter(l => l.level === 'WARNING').length,
+                error: this.logs.filter(l => l.level === 'ERROR').length
+            };
+        },
+
+        clearLogs() {
+            this.logs = [];
+            this.filteredLogs = [];
+            this.logStats = { debug: 0, info: 0, warning: 0, error: 0 };
+            showToast('已清除显示的日志', 'info');
+        },
+
+        downloadLogs() {
+            const content = this.filteredLogs.map(log =>
+                `[${log.timestamp}] [${log.level}] ${log.message}`
+            ).join('\n');
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${this.logType}_log_${new Date().toISOString().slice(0, 10)}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('日志已下载', 'success');
+        },
+
+        scrollToTop() {
+            document.getElementById('log-container').scrollTop = 0;
+        },
+
+        scrollToBottom() {
+            const container = document.getElementById('log-container');
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+}
+</script>
+{% endblock %}

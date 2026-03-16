@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}OA2A - OpenAI to Anthropic Proxy{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['DM Sans', 'system-ui', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#FFF7ED',
+                            100: '#FFEDD5',
+                            200: '#FED7AA',
+                            300: '#FDBA74',
+                            400: '#FB923C',
+                            500: '#F97316',
+                            600: '#EA580C',
+                            700: '#C2410C',
+                        },
+                        teal: {
+                            50: '#F0FDFA',
+                            100: '#CCFBF1',
+                            200: '#99F6E4',
+                            300: '#5EEAD4',
+                            400: '#2DD4BF',
+                            500: '#14B8A6',
+                            600: '#0D9488',
+                        },
+                        stone: {
+                            50: '#FAFAF9',
+                            100: '#F5F5F4',
+                            150: '#EEEEEC',
+                            200: '#E7E5E4',
+                            300: '#D6D3D1',
+                            400: '#A8A29E',
+                            500: '#78716C',
+                            600: '#57534E',
+                            700: '#44403C',
+                            800: '#292524',
+                            900: '#1C1917',
+                        },
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        [x-cloak] { display: none !important; }
+        body { background: #FAFAF9; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #D6D3D1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #A8A29E; }
+
+        .nav-link {
+            transition: all 0.2s ease;
+            border-radius: 10px;
+        }
+        .nav-link:hover {
+            background: rgba(249, 115, 22, 0.06);
+            color: #EA580C;
+        }
+        .nav-link.active {
+            background: rgba(249, 115, 22, 0.08);
+            color: #EA580C;
+            font-weight: 600;
+        }
+        .nav-link.active svg { stroke: #EA580C; }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(214, 211, 209, 0.5);
+            transition: all 0.25s ease;
+        }
+        .glass-card:hover {
+            background: rgba(255, 255, 255, 0.9);
+            border-color: rgba(214, 211, 209, 0.8);
+            box-shadow: 0 4px 24px rgba(28, 25, 23, 0.06);
+        }
+
+        .stat-card {
+            background: white;
+            border: 1px solid #E7E5E4;
+            transition: all 0.25s ease;
+        }
+        .stat-card:hover {
+            border-color: #D6D3D1;
+            box-shadow: 0 2px 16px rgba(28, 25, 23, 0.04);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #F97316 0%, #EA580C 100%);
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(249, 115, 22, 0.25);
+        }
+        .btn-primary:hover {
+            box-shadow: 0 4px 16px rgba(249, 115, 22, 0.35);
+            transform: translateY(-1px);
+        }
+
+        .btn-secondary {
+            background: white;
+            border: 1px solid #E7E5E4;
+            transition: all 0.2s ease;
+        }
+        .btn-secondary:hover {
+            background: #F5F5F4;
+            border-color: #D6D3D1;
+        }
+
+        .input-field {
+            background: white;
+            border: 1px solid #E7E5E4;
+            transition: all 0.2s ease;
+        }
+        .input-field:focus {
+            border-color: #F97316;
+            box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+            outline: none;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 10px;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+
+        .sidebar-gradient {
+            background: linear-gradient(180deg, #FFFFFF 0%, #FAFAF9 100%);
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="min-h-screen font-sans text-stone-800">
+    <div class="flex h-screen overflow-hidden">
+        <!-- Sidebar -->
+        <aside class="w-60 sidebar-gradient border-r border-stone-200 flex flex-col flex-shrink-0">
+            <!-- Logo -->
+            <div class="px-5 py-5 border-b border-stone-200">
+                <a href="/" class="flex items-center gap-3 group">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center shadow-sm">
+                        <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-base font-bold text-stone-900 tracking-tight">OA2A</h1>
+                        <p class="text-[10px] text-stone-400 font-mono">proxy server</p>
+                    </div>
+                </a>
+            </div>
+
+            <!-- Navigation -->
+            <nav class="flex-1 px-3 py-4 space-y-1">
+                <p class="px-3 py-2 text-[10px] font-semibold text-stone-400 uppercase tracking-widest">导航</p>
+                <a href="/" class="nav-link flex items-center gap-3 px-3 py-2.5 text-sm text-stone-600 {% if request.url.path == '/' %}active{% endif %}">
+                    <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+                        <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+                        <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+                        <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+                    </svg>
+                    <span>仪表板</span>
+                </a>
+                <a href="/config" class="nav-link flex items-center gap-3 px-3 py-2.5 text-sm text-stone-600 {% if request.url.path == '/config' %}active{% endif %}">
+                    <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                    <span>配置管理</span>
+                </a>
+                <a href="/logs" class="nav-link flex items-center gap-3 px-3 py-2.5 text-sm text-stone-600 {% if request.url.path == '/logs' %}active{% endif %}">
+                    <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                    </svg>
+                    <span>日志查看</span>
+                </a>
+                <a href="/api-test" class="nav-link flex items-center gap-3 px-3 py-2.5 text-sm text-stone-600 {% if request.url.path == '/api-test' %}active{% endif %}">
+                    <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="16 18 22 12 16 6"/>
+                        <polyline points="8 6 2 12 8 18"/>
+                    </svg>
+                    <span>API 测试</span>
+                </a>
+
+                <p class="px-3 pt-4 pb-2 text-[10px] font-semibold text-stone-400 uppercase tracking-widest">资源</p>
+                <a href="/docs" class="nav-link flex items-center gap-3 px-3 py-2.5 text-sm text-stone-600">
+                    <svg class="w-[18px] h-[18px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                    </svg>
+                    <span>API 文档</span>
+                </a>
+            </nav>
+
+            <!-- Server Status -->
+            <div class="px-4 py-4 border-t border-stone-200">
+                <div id="server-status" class="flex items-center gap-2.5 px-3 py-2.5 bg-teal-50 rounded-xl">
+                    <span class="w-2 h-2 rounded-full bg-teal-500 pulse-dot"></span>
+                    <span class="text-xs font-medium text-teal-700">运行中</span>
+                    <span class="text-[10px] text-teal-500 font-mono ml-auto">PID 97332</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-auto bg-stone-50">
+            <!-- Top Header -->
+            <header class="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-stone-200 px-8 py-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-bold text-stone-900">{% block page_title %}仪表板{% endblock %}</h2>
+                        <p class="text-sm text-stone-400 mt-0.5">{% block page_subtitle %}监控和管理你的 OA2A 代理服务器{% endblock %}</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button onclick="location.reload()" class="btn-secondary p-2 rounded-xl cursor-pointer">
+                            <svg class="w-4 h-4 text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="23 4 23 10 17 10"/>
+                                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Page Content -->
+            <div class="p-8">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 space-y-2"></div>
+
+    <script>
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const styles = {
+                success: { bg: 'bg-teal-500', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+                error: { bg: 'bg-red-500', icon: 'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z' },
+                warning: { bg: 'bg-amber-500', icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z' },
+                info: { bg: 'bg-brand-500', icon: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z' }
+            };
+            const s = styles[type] || styles.info;
+
+            const toast = document.createElement('div');
+            toast.className = `${s.bg} text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2.5 transform transition-all duration-300 translate-x-full text-sm font-medium`;
+            toast.innerHTML = `
+                <svg class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${s.icon}"/></svg>
+                <span>${message}</span>
+            `;
+            container.appendChild(toast);
+            setTimeout(() => toast.classList.remove('translate-x-full'), 10);
+            setTimeout(() => {
+                toast.classList.add('translate-x-full');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        async function updateServerStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                const statusEl = document.getElementById('server-status');
+                if (data.running) {
+                    statusEl.className = 'flex items-center gap-2.5 px-3 py-2.5 bg-teal-50 rounded-xl';
+                    statusEl.innerHTML = `
+                        <span class="w-2 h-2 rounded-full bg-teal-500 pulse-dot"></span>
+                        <span class="text-xs font-medium text-teal-700">运行中</span>
+                        <span class="text-[10px] text-teal-500 font-mono ml-auto">PID ${data.pid}</span>
+                    `;
+                } else {
+                    statusEl.className = 'flex items-center gap-2.5 px-3 py-2.5 bg-red-50 rounded-xl';
+                    statusEl.innerHTML = `
+                        <span class="w-2 h-2 rounded-full bg-red-500"></span>
+                        <span class="text-xs font-medium text-red-700">已停止</span>
+                    `;
+                }
+            } catch (e) {
+                console.error('Failed to update server status:', e);
+            }
+        }
+        setInterval(updateServerStatus, 30000);
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

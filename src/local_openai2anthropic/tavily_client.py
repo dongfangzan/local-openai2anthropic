@@ -6,40 +6,50 @@ Tavily API client for web search functionality.
 import logging
 from typing import Optional
 
-import httpx
-
+from local_openai2anthropic.base_search_client import BaseSearchClient
 from local_openai2anthropic.protocol import WebSearchResult
 
 logger = logging.getLogger(__name__)
 
 
-class TavilyClient:
+class TavilyClient(BaseSearchClient):
     """Client for Tavily Search API."""
 
-    BASE_URL = "https://api.tavily.com"
+    DEFAULT_BASE_URL = "https://api.tavily.com"
 
-    def __init__(
-        self,
-        api_key: Optional[str] = None,
-        timeout: float = 30.0,
-        base_url: Optional[str] = None,
-    ):
-        """
-        Initialize Tavily client.
+    def _validate_query(self, query: str) -> Optional[str]:
+        """Validate the search query."""
+        if not query or not query.strip():
+            logger.warning("Tavily search called with empty query")
+            return "invalid_input"
+        return None
 
-        Args:
-            api_key: Tavily API key. If None, client is disabled.
-            timeout: Request timeout in seconds.
-            base_url: Optional custom base URL for Tavily API.
-        """
-        self.api_key = api_key
-        self.timeout = timeout
-        self.base_url = base_url or self.BASE_URL
-        self._enabled = bool(api_key)
+    def _build_payload(self, query: str, max_results: int, search_depth: str = "basic") -> dict:
+        """Build the Tavily API request payload."""
+        return {
+            "api_key": self.api_key,
+            "query": query,
+            "max_results": max_results,
+            "search_depth": search_depth,
+            "include_answer": False,
+            "include_raw_content": False,
+        }
 
-    def is_enabled(self) -> bool:
-        """Check if web search is enabled (API key configured)."""
-        return self._enabled
+    def _parse_response(self, data: dict) -> list[WebSearchResult]:
+        """Parse Tavily API response into WebSearchResult objects."""
+        results = []
+        for item in data.get("results", []):
+            result = WebSearchResult(
+                type="web_search_result",
+                url=item.get("url", ""),
+                title=item.get("title", ""),
+                page_age=item.get("published_date"),
+                encrypted_content=item.get("content", ""),
+            )
+            results.append(result)
+
+        logger.debug(f"Tavily search returned {len(results)} results")
+        return results
 
     async def search(
         self,
@@ -57,71 +67,39 @@ class TavilyClient:
 
         Returns:
             Tuple of (list of WebSearchResult, error_code or None).
-            Error codes: "invalid_input", "query_too_long", "too_many_requests", "unavailable"
         """
         if not self._enabled:
             logger.warning("Tavily search called but API key not configured")
             return [], "unavailable"
 
-        if not query or not query.strip():
-            logger.warning("Tavily search called with empty query")
-            return [], "invalid_input"
+        if validation_error := self._validate_query(query):
+            return [], validation_error
+
+        import httpx
 
         url = f"{self.base_url}/search"
-        headers = {
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "api_key": self.api_key,
-            "query": query,
-            "max_results": max_results,
-            "search_depth": search_depth,
-            "include_answer": False,
-            "include_raw_content": False,
-        }
+        headers = {"Content-Type": "application/json"}
+        payload = self._build_payload(query, max_results, search_depth)
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(url, headers=headers, json=payload)
 
-                if response.status_code == 400:
-                    logger.warning("Tavily invalid request")
-                    return [], "invalid_input"
-
-                if response.status_code == 413:
-                    logger.warning("Tavily query too long")
-                    return [], "query_too_long"
-
-                if response.status_code == 429:
-                    logger.warning("Tavily rate limit exceeded")
-                    return [], "too_many_requests"
-
-                if response.status_code >= 500:
-                    logger.error(f"Tavily server error: {response.status_code}")
-                    return [], "unavailable"
-
-                # Only raise for status codes we haven't handled (e.g., 401, 403)
-                if response.status_code >= 400:
-                    logger.error(f"Tavily client error: {response.status_code}")
-                    return [], "unavailable"
+                if error_code := self._get_error_code(response.status_code):
+                    if error_code == "invalid_input":
+                        logger.warning("Tavily invalid request")
+                    elif error_code == "query_too_long":
+                        logger.warning("Tavily query too long")
+                    elif error_code == "too_many_requests":
+                        logger.warning("Tavily rate limit exceeded")
+                    else:
+                        logger.error(f"Tavily error: {response.status_code}")
+                    return [], error_code
 
                 response.raise_for_status()
                 data = response.json()
 
-                results = []
-                for item in data.get("results", []):
-                    result = WebSearchResult(
-                        type="web_search_result",
-                        url=item.get("url", ""),
-                        title=item.get("title", ""),
-                        page_age=item.get("published_date"),
-                        encrypted_content=item.get("content", ""),
-                    )
-                    results.append(result)
-
-                logger.debug(
-                    f"Tavily search returned {len(results)} results for query: {query[:50]}..."
-                )
+                results = self._parse_response(data)
                 return results, None
 
         except httpx.TimeoutException:
