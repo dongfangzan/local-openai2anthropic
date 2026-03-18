@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Claude Code Docker Image with Python and Node.js environments
 
-FROM node:20-slim
+FROM node:24-slim
 
 # Install Python and other development tools (including bubblewrap for sandbox)
 RUN apt-get update && apt-get install -y --no-install-recommends \
