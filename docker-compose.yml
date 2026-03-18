@@ -82,8 +82,6 @@ services:
       - ./workspace:/workspace
       # Claude Code configuration directory (auto-generate if not exists)
       - ./claude-code/config:/home/claude/.claude-config:rw
-      # Claude Code skills directory
-      - ./claude-code/skills:/home/claude/.claude/skills:rw
       # Claude Code plugins directory (for installed skills)
       - ./claude-code/plugins:/home/claude/.claude/plugins:rw
     working_dir: /workspace
