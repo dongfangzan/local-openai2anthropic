@@ -69,3 +69,12 @@ config.local.toml
 # Git worktrees
 .worktrees/
 worktrees/
+
+# Claude Code runtime data
+claude-code/.claude/
+claude-code/.claude.json
+claude-code/skills/
+workspace/
+
+# Playwright screenshots
+.playwright-mcp/
