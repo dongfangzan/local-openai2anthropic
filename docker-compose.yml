@@ -82,6 +82,8 @@ services:
       - ./workspace:/workspace
       # Claude Code configuration directory (auto-generate if not exists)
       - ./claude-code/config:/home/claude/.claude-config:rw
+      # Claude Code skills directory
+      - ./claude-code/skills:/home/claude/.claude/skills:rw
     working_dir: /workspace
     stdin_open: true
     tty: true
