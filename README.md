@@ -164,7 +164,66 @@ docker-compose down
 docker-compose up -d --build
 ```
 
-### Option 2: pip Installation
+### Option 2: Run Claude Code (Docker, No Build Required)
+
+Use the pre-built Claude Code Docker image to run the CLI directly with your local LLM - no Anthropic account, no local installation needed.
+
+#### Quick Start
+
+```bash
+# 1. Configure and start both services
+cat > .env << 'EOF'
+OA2A_OPENAI_API_KEY=your-api-key
+OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1
+CLAUDE_MODEL=your-model-name
+EOF
+
+# 2. Start with docker-compose
+docker-compose up -d
+
+# 3. Enter Claude Code
+docker-compose exec claude-code claude --dangerously-skip-permissions
+```
+
+**Features:**
+- Pre-configured Claude Code CLI (no login required)
+- Node.js + Python development environment
+- Full sandbox support (bubblewrap, socat, ripgrep)
+- Customizable models via environment variables
+- Persistent workspace and conversation history
+
+**Model Configuration:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CLAUDE_MODEL` | kimi-k2.5 | Default model |
+| `CLAUDE_OPUS_MODEL` | kimi-k2.5 | Opus tier model |
+| `CLAUDE_SONNET_MODEL` | kimi-k2.5 | Sonnet tier model |
+| `CLAUDE_REASONING_MODEL` | kimi-k2.5 | Reasoning/thinking model |
+
+**Run without docker-compose:**
+
+```bash
+# Start OA2A proxy first
+docker run -d \
+  --name oa2a \
+  -e OA2A_OPENAI_API_KEY=your-api-key \
+  -e OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1 \
+  -p 8080:8080 \
+  dongfangzan/local-openai2anthropic:latest
+
+# Run Claude Code
+docker run -it --rm \
+  --link oa2a \
+  -e ANTHROPIC_BASE_URL=http://oa2a:8080 \
+  -e ANTHROPIC_AUTH_TOKEN=local \
+  -e CLAUDE_MODEL=your-model \
+  -v $(pwd):/workspace \
+  dongfangzan/claude-code:latest \
+  claude --dangerously-skip-permissions
+```
+
+### Option 3: pip Installation
 
 #### 1. Install
 
@@ -270,7 +329,29 @@ print(message.content[0].text)
 
 You can configure [Claude Code](https://github.com/anthropics/claude-code) to use your local LLM through this proxy.
 
-### Configuration Steps
+### Option 1: Docker (Recommended - No Installation Required)
+
+Use the pre-built Claude Code Docker image with your local LLM:
+
+```bash
+# Start with docker-compose (includes both OA2A proxy and Claude Code)
+cat > .env << 'EOF'
+OA2A_OPENAI_API_KEY=your-api-key
+OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1
+CLAUDE_MODEL=your-model-name
+EOF
+
+docker-compose up -d
+docker-compose exec claude-code claude --dangerously-skip-permissions
+```
+
+**Docker Image Features:**
+- Pre-installed Claude Code CLI (no login/Anthropic account needed)
+- Node.js 20 + Python 3.11 development environment
+- Full sandbox support (bubblewrap, ripgrep, socat)
+- Workspace persistence
+
+### Option 2: Local Installation
 
 1. **Edit Claude Code config file** at `~/.claude/settings.json`:
 
@@ -296,7 +377,7 @@ You can configure [Claude Code](https://github.com/anthropics/claude-code) to us
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Default model for Haiku mode |
 | `ANTHROPIC_REASONING_MODEL` | Default model for reasoning tasks |
 
-### Complete Workflow Example
+### Complete Workflow Example (Local Installation)
 
 Make sure `~/.claude/settings.json` is configured as described above.
 
