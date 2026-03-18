@@ -44,10 +44,6 @@ COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-# Copy base configurations
-COPY config/ /home/claude/.claude/
-RUN chown -R claude:claude /home/claude/.claude
-
 # Switch to non-root user
 USER claude
 WORKDIR /workspace
