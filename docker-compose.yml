@@ -80,10 +80,10 @@ services:
     volumes:
       # Workspace directory for development
       - ./workspace:/workspace
-      # Claude Code configuration directory (auto-generate if not exists)
-      - ./claude-code/config:/home/claude/.claude-config:rw
-      # Claude Code plugins directory (for installed skills)
-      - ./claude-code/plugins:/home/claude/.claude/plugins:rw
+      # Claude Code full configuration directory
+      - ./claude-code/.claude:/home/claude/.claude:rw
+      # Claude Code user state file
+      - ./claude-code/.claude.json:/home/claude/.claude.json:rw
     working_dir: /workspace
     stdin_open: true
     tty: true

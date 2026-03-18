@@ -4,16 +4,13 @@
 
 set -e
 
-# Create config directories
+# Create config directory if not exists
 mkdir -p ~/.claude
 
-# Check if settings.json exists in mounted volume, copy or generate
-if [ -f ~/.claude-config/settings.json ]; then
-    echo "Using existing settings.json from local..."
-    cp ~/.claude-config/settings.json ~/.claude/settings.json
-else
+# Check if settings.json exists, generate default if not
+if [ ! -f ~/.claude/settings.json ]; then
     echo "Generating default settings.json with environment variables..."
-    cat > ~/.claude-config/settings.json << CONFIGEOF
+    cat > ~/.claude/settings.json << CONFIGEOF
 {
   "env": {
     "ANTHROPIC_BASE_URL": "http://oa2a:8080",
@@ -31,23 +28,18 @@ else
   "autoUpdates": false
 }
 CONFIGEOF
-    cp ~/.claude-config/settings.json ~/.claude/settings.json
 fi
 
-# Check if claude.json exists in mounted volume, copy or generate
-if [ -f ~/.claude-config/claude.json ]; then
-    echo "Using existing claude.json from local..."
-    cp ~/.claude-config/claude.json ~/.claude.json
-else
+# Check if claude.json exists, generate default if not
+if [ ! -f ~/.claude.json ]; then
     echo "Generating default claude.json..."
-    cat > ~/.claude-config/claude.json << 'EOF'
+    cat > ~/.claude.json << 'EOF'
 {"hasCompletedOnboarding": true, "installMethod": "docker", "autoUpdates": false, "userID": "docker-claude-user", "numStartups": 1}
 EOF
-    cp ~/.claude-config/claude.json ~/.claude.json
 fi
 
 echo "Claude Code config ready."
-echo "Local config path: ./claude-code/config/"
+echo "Local config path: ./claude-code/.claude/"
 
 # Execute the provided command
 exec "$@"
