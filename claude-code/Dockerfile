@@ -25,8 +25,8 @@ RUN useradd -m -s /bin/bash -u 1001 claude && \
     echo "claude ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/claude && \
     chmod 0440 /etc/sudoers.d/claude
 
-# Install Claude Code CLI and Sandbox Runtime globally
-RUN npm install -g @anthropic-ai/claude-code @anthropic-ai/sandbox-runtime && \
+# Install Claude Code CLI using official install script
+RUN curl -fsSL https://claude.ai/install.sh | bash && \
     # Fix permissions for claude user
     mkdir -p /home/claude/.claude && \
     chown -R claude:claude /home/claude
