@@ -16,6 +16,14 @@ log_level = "${OA2A_LOG_LEVEL:-INFO}"
 tavily_api_key = "${OA2A_TAVILY_API_KEY:-}"
 tavily_timeout = ${OA2A_TAVILY_TIMEOUT:-30.0}
 tavily_max_results = ${OA2A_TAVILY_MAX_RESULTS:-5}
+
+# TongXiao (通晓) Web Search Configuration
+tongxiao_api_key = "${OA2A_TONGXIAO_API_KEY:-}"
+tongxiao_timeout = ${OA2A_TONGXIAO_TIMEOUT:-30.0}
+tongxiao_max_results = ${OA2A_TONGXIAO_MAX_RESULTS:-5}
+
+# Web Search Provider: tavily, tongxiao, or both
+websearch_provider = "${OA2A_WEBSEARCH_PROVIDER:-tavily}"
 websearch_max_uses = ${OA2A_WEBSEARCH_MAX_USES:-5}
 cors_origins = ["*"]
 cors_credentials = true

@@ -35,8 +35,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml README.md .
 COPY src ./src
 
-# Install the package
-RUN pip install --no-cache-dir .
+# Install the package and dependencies
+RUN pip install --no-cache-dir . && \
+    pip install --no-cache-dir jinja2
 
 # Create config directory
 RUN mkdir -p /app/config

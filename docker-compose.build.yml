@@ -1,45 +1,41 @@
 # SPDX-License-Identifier: Apache-2.0
-# local-openai2anthropic Docker Compose Configuration
-# Uses pre-built images from Docker Hub by default
+# Local build configuration for development
+# Use this file to build images locally instead of pulling from Docker Hub
+#
+# Usage: docker-compose -f docker-compose.build.yml up -d --build
 
 services:
   oa2a:
-    image: dongfangzan/local-openai2anthropic:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: local-openai2anthropic
     ports:
       - "${OA2A_PORT:-8080}:8080"
     environment:
-      # Required: OpenAI API configuration
       - OA2A_OPENAI_API_KEY=${OA2A_OPENAI_API_KEY:-}
       - OA2A_OPENAI_BASE_URL=${OA2A_OPENAI_BASE_URL:-http://host.docker.internal:8000/v1}
-      
-      # Optional: Server configuration
       - OA2A_HOST=${OA2A_HOST:-0.0.0.0}
       - OA2A_PORT=${OA2A_PORT:-8080}
       - OA2A_API_KEY=${OA2A_API_KEY:-}
       - OA2A_LOG_LEVEL=${OA2A_LOG_LEVEL:-INFO}
-      
-      # Optional: Tavily web search
       - OA2A_TAVILY_API_KEY=${OA2A_TAVILY_API_KEY:-}
       - OA2A_TAVILY_MAX_RESULTS=${OA2A_TAVILY_MAX_RESULTS:-5}
       - OA2A_TAVILY_TIMEOUT=${OA2A_TAVILY_TIMEOUT:-30}
       - OA2A_WEBSEARCH_MAX_USES=${OA2A_WEBSEARCH_MAX_USES:-5}
 
-      # Optional: TongXiao Web Search
+      # TongXiao Web Search Configuration
       - OA2A_TONGXIAO_API_KEY=${OA2A_TONGXIAO_API_KEY:-}
       - OA2A_TONGXIAO_MAX_RESULTS=${OA2A_TONGXIAO_MAX_RESULTS:-5}
       - OA2A_TONGXIAO_TIMEOUT=${OA2A_TONGXIAO_TIMEOUT:-30}
       - OA2A_WEBSEARCH_PROVIDER=${OA2A_WEBSEARCH_PROVIDER:-tavily}
 
-      # Optional: CORS settings
       - OA2A_CORS_ORIGINS=${OA2A_CORS_ORIGINS:-*}
       - OA2A_CORS_CREDENTIALS=${OA2A_CORS_CREDENTIALS:-true}
       - OA2A_CORS_METHODS=${OA2A_CORS_METHODS:-*}
       - OA2A_CORS_HEADERS=${OA2A_CORS_HEADERS:-*}
     volumes:
-      # Optional: Mount a custom config file
       - ./config:/app/config:ro
-      # Optional: Mount logs directory
       - ./logs:/app/logs
     restart: unless-stopped
     healthcheck:
@@ -52,37 +48,30 @@ services:
       - oa2a-network
 
   claude-code:
-    image: dongfangzan/claude-code:latest
+    build:
+      context: ./claude-code
+      dockerfile: Dockerfile
     container_name: claude-code
     depends_on:
       oa2a:
         condition: service_healthy
     environment:
-      # Point Claude Code to OA2A proxy
       - ANTHROPIC_BASE_URL=http://oa2a:8080
       - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-local}
-
-      # Model configuration (customizable via env)
       - CLAUDE_MODEL=${CLAUDE_MODEL:-kimi-k2.5}
       - CLAUDE_OPUS_MODEL=${CLAUDE_OPUS_MODEL:-kimi-k2.5}
       - CLAUDE_SONNET_MODEL=${CLAUDE_SONNET_MODEL:-kimi-k2.5}
       - CLAUDE_HAIKU_MODEL=${CLAUDE_HAIKU_MODEL:-kimi-k2.5}
       - CLAUDE_REASONING_MODEL=${CLAUDE_REASONING_MODEL:-kimi-k2.5}
-
-      # API timeout
       - API_TIMEOUT_MS=${API_TIMEOUT_MS:-120000}
     volumes:
-      # Workspace directory for development
       - ./workspace:/workspace
-      # Claude Code configuration directory (auto-generate if not exists)
-      - ./claude-code/config:/home/claude/.claude-config:rw
     working_dir: /workspace
     stdin_open: true
     tty: true
     user: claude
-    entrypoint: ["/usr/local/bin/docker-entrypoint.sh"]
-    command: ["tail", "-f", "/dev/null"]
-    # Enable sandbox capabilities for bubblewrap
+    command: bash
+    # Enable sandbox capabilities
     privileged: true
     cap_add:
       - SYS_ADMIN
