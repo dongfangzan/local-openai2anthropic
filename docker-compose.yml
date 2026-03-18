@@ -36,6 +36,9 @@ services:
       - OA2A_CORS_CREDENTIALS=${OA2A_CORS_CREDENTIALS:-true}
       - OA2A_CORS_METHODS=${OA2A_CORS_METHODS:-*}
       - OA2A_CORS_HEADERS=${OA2A_CORS_HEADERS:-*}
+
+      # Timezone (default: Asia/Shanghai)
+      - TZ=${TZ:-Asia/Shanghai}
     volumes:
       # Optional: Mount a custom config file
       - ./config:/app/config:ro
@@ -71,6 +74,9 @@ services:
 
       # API timeout
       - API_TIMEOUT_MS=${API_TIMEOUT_MS:-120000}
+
+      # Timezone (default: Asia/Shanghai)
+      - TZ=${TZ:-Asia/Shanghai}
     volumes:
       # Workspace directory for development
       - ./workspace:/workspace
