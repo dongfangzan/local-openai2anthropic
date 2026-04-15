@@ -137,6 +137,13 @@ async def create_message(
         )
         return JSONResponse(status_code=400, content=error_response.model_dump())
 
+    # Resolve model name using mapping rules
+    original_model = anthropic_params.get("model", "")
+    resolved_model = settings.resolve_model(original_model)
+    if resolved_model != original_model:
+        logger.debug("Model name mapped: %s -> %s", original_model, resolved_model)
+        anthropic_params["model"] = resolved_model
+
     messages_value = anthropic_params.get("messages")
     if not isinstance(messages_value, list) or len(messages_value) == 0:
         error_response = AnthropicErrorResponse(

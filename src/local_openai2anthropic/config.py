@@ -8,6 +8,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Optional
 
+from fnmatch import fnmatch
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -88,6 +90,17 @@ tongxiao_max_results = 5
 websearch_max_uses = 5
 # Choose search provider: "tavily", "tongxiao", or "both" (uses both and merges results)
 websearch_provider = "tavily"
+
+# Model name mapping
+# default_model is the fallback when no rule matches
+default_model = ""
+
+# [[model_mapping]] sections: from/to pairs
+# Use * or ? for wildcard matching (e.g. "*opus*" matches "claude-opus-4-20250514")
+# Example:
+# [[model_mapping]]
+# from = "sonnet"
+# to = "kimi-k2.5"
 """
     config_file.write_text(default_config, encoding="utf-8")
 
@@ -248,6 +261,14 @@ def load_config_from_file() -> dict:
         return tomllib.load(f)
 
 
+class ModelMappingRule(BaseSettings):
+    """A single model name mapping rule from -> to using fnmatch for wildcard support."""
+    from_: str = Field(alias="from", description="Pattern to match (supports * and ? wildcards)")
+    to: str = Field(description="Backend model name to resolve to")
+
+    model_config = SettingsConfigDict(populate_by_name=True)
+
+
 class Settings(BaseSettings):
     """Application settings loaded from config file only.
 
@@ -300,6 +321,13 @@ class Settings(BaseSettings):
         description="Search provider: 'tavily', 'tongxiao', or 'both'"
     )
 
+    # Model name mapping configuration
+    default_model: str = Field(default="", description="Fallback model when no mapping rule matches")
+    model_mapping: list[ModelMappingRule] = Field(
+        default_factory=list,
+        description="List of model name mapping rules (from -> to, supports * wildcards)"
+    )
+
     @property
     def openai_auth_headers(self) -> dict[str, str]:
         """Get OpenAI authentication headers."""
@@ -311,6 +339,26 @@ class Settings(BaseSettings):
         if self.openai_project_id:
             headers["OpenAI-Project"] = self.openai_project_id
         return headers
+
+    def resolve_model(self, model: str) -> str:
+        """Resolve a model name using mapping rules.
+
+        Returns the mapped model name, or the original if no rule matches
+        and no default_model is configured.
+        """
+        # Try exact match first (fast path, O(1))
+        for rule in self.model_mapping:
+            if rule.from_ == model:
+                return rule.to
+        # Then wildcard matching (O(n) but typically n < 10)
+        for rule in self.model_mapping:
+            if '*' in rule.from_ or '?' in rule.from_:
+                if fnmatch(model, rule.from_):
+                    return rule.to
+        # Fallback to configured default
+        if self.default_model:
+            return self.default_model
+        return model
 
     @classmethod
     def from_toml(cls) -> "Settings":
