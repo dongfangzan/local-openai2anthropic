@@ -241,6 +241,7 @@ def convert_anthropic_to_openai(
             params["chat_template_kwargs"] = {
                 "thinking": True,
                 "enable_thinking": True,
+                "preserve_thinking": True,
             }
 
             # Log if budget_tokens was provided but will be ignored
@@ -256,6 +257,7 @@ def convert_anthropic_to_openai(
             params["chat_template_kwargs"] = {
                 "thinking": True,
                 "enable_thinking": True,
+                "preserve_thinking": True,
             }
         else:
             # Default to disabled thinking mode if not explicitly enabled

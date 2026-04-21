@@ -152,7 +152,11 @@ class TestAnthropicToOpenAI:
         
         result = convert_anthropic_to_openai(params)
         
-        assert result["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
+        assert result["chat_template_kwargs"] == {
+            "thinking": True,
+            "enable_thinking": True,
+            "preserve_thinking": True,
+        }
 
     def test_thinking_disabled(self):
         """Test thinking disabled conversion."""
@@ -178,7 +182,11 @@ class TestAnthropicToOpenAI:
 
         result = convert_anthropic_to_openai(params)
 
-        assert result["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
+        assert result["chat_template_kwargs"] == {
+            "thinking": True,
+            "enable_thinking": True,
+            "preserve_thinking": True,
+        }
 
     def test_thinking_adaptive(self):
         """Test adaptive thinking mode."""
@@ -191,7 +199,11 @@ class TestAnthropicToOpenAI:
 
         result = convert_anthropic_to_openai(params)
 
-        assert result["chat_template_kwargs"] == {"thinking": True, "enable_thinking": True}
+        assert result["chat_template_kwargs"] == {
+            "thinking": True,
+            "enable_thinking": True,
+            "preserve_thinking": True,
+        }
 
 
 class TestStripClaudeBillingHeader:
