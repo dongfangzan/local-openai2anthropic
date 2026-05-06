@@ -23,7 +23,7 @@ class TestCreateApp:
         app = create_app(settings)
 
         assert app.title == "local-openai2anthropic"
-        assert app.version == "0.6.4"
+        assert app.version == "0.6.5"
         assert app.docs_url == "/docs"
         assert app.redoc_url == "/redoc"
 

@@ -6,7 +6,7 @@ FastAPI router for Anthropic-compatible Messages API.
 import json
 import logging
 from http import HTTPStatus
-from typing import Any, cast
+from typing import Any, AsyncGenerator, cast
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -41,10 +41,13 @@ from local_openai2anthropic.utils import (
 logger = logging.getLogger(__name__)
 api_logger = logging.getLogger("api")
 router = APIRouter()
+openai_router = APIRouter(prefix="/v1")
+
 
 # Backward compatibility: re-export functions used by tests
 __all__ = [
     "router",
+    "openai_router",
     "get_request_settings",
     "create_message",
     "list_models",
@@ -463,11 +466,7 @@ async def health_check() -> dict[str, str]:
 
 @router.post("/api/event_logging/batch")
 async def event_logging_batch(request: Request) -> Response:
-    """
-    Event logging endpoint placeholder.
-    Returns 204 No Content to acknowledge receipt without processing.
-    Some clients (e.g., Claude Desktop) may send analytics events here.
-    """
+    """Event logging endpoint placeholder."""
     try:
         body_bytes = await request.body()
         body_json = json.loads(body_bytes.decode("utf-8"))
@@ -476,3 +475,121 @@ async def event_logging_batch(request: Request) -> Response:
         logger.info(f"[Event Logging] Failed to parse body: {e}")
 
     return Response(status_code=204)
+
+
+# ── OpenAI-native passthrough routes ──────────────────────────────────────────
+# These routes accept OpenAI-format requests and proxy them directly to the
+# upstream API without any conversion. Useful when clients already speak the
+# OpenAI protocol and want to avoid the Anthropic↔OpenAI conversion overhead.
+#
+# Endpoints:
+#   POST /v1/chat/completions   — non-streaming
+#   POST /v1/chat/completions   — streaming (when stream=True in body)
+
+
+@openai_router.post("/chat/completions", response_model=None)
+async def openai_chat_completions(
+    request: Request,
+    settings: Settings = Depends(get_request_settings),
+):
+    """Proxy an OpenAI-format /v1/chat/completions request directly upstream."""
+    try:
+        body_bytes = await request.body()
+        body_json = json.loads(body_bytes.decode("utf-8"))
+        logger.debug(
+            f"[OpenAI Passthrough Request] {json.dumps(body_json, ensure_ascii=False, indent=2)}"
+        )
+        api_logger.debug(
+            f"[OpenAI Passthrough Request] {json.dumps(body_json, ensure_ascii=False)}"
+        )
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in passthrough request: {e}")
+        return JSONResponse(
+            status_code=400,
+            content={"error": {"message": f"Invalid JSON: {e}", "type": "invalid_request_error"}},
+        )
+    except Exception as e:
+        logger.error(f"Failed to parse passthrough request body: {e}")
+        return JSONResponse(
+            status_code=400,
+            content={"error": {"message": str(e), "type": "invalid_request_error"}},
+        )
+
+    url = f"{settings.openai_base_url.rstrip('/')}/chat/completions"
+    headers = {**settings.openai_auth_headers, "Content-Type": "application/json"}
+
+    stream = body_json.get("stream", False)
+
+    if stream:
+        client = httpx.AsyncClient(timeout=settings.request_timeout)
+        return StreamingResponse(
+            _openai_stream_proxy(client, url, headers, body_json),
+            media_type="text/event-stream",
+        )
+
+    async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
+        try:
+            response = await client.post(url, headers=headers, json=body_json)
+
+            if not response.content:
+                return JSONResponse(
+                    status_code=502,
+                    content={"error": {"message": "Upstream API returned empty response", "type": "api_error"}},
+                )
+
+            try:
+                response_json = response.json()
+            except json.JSONDecodeError as e:
+                return JSONResponse(
+                    status_code=502,
+                    content={"error": {"message": f"Failed to parse upstream response: {e}", "type": "api_error"}},
+                )
+
+            logger.debug(
+                f"[OpenAI Passthrough Response] {json.dumps(response_json, ensure_ascii=False, indent=2)}"
+            )
+            api_logger.debug(
+                f"[OpenAI Passthrough Response] {json.dumps(response_json, ensure_ascii=False)}"
+            )
+
+            return JSONResponse(status_code=response.status_code, content=response_json)
+
+        except httpx.TimeoutException:
+            return JSONResponse(
+                status_code=504,
+                content={"error": {"message": "Request timed out", "type": "timeout_error"}},
+            )
+        except httpx.RequestError as e:
+            return JSONResponse(
+                status_code=502,
+                content={"error": {"message": str(e), "type": "connection_error"}},
+            )
+
+
+async def _openai_stream_proxy(
+    client: httpx.AsyncClient,
+    url: str,
+    headers: dict,
+    body_json: dict,
+) -> AsyncGenerator[str, None]:
+    """Stream-proxy an OpenAI request — pass chunks through unchanged."""
+    try:
+        async with client.stream("POST", url, headers=headers, json=body_json) as response:
+            if response.status_code != 200:
+                error_body = await response.aread()
+                error_text = error_body.decode("utf-8", errors="replace").strip()
+                yield f"data: {json.dumps({'error': {'message': error_text or f'Upstream error ({response.status_code})', 'type': 'api_error'}})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+
+            async for line in response.aiter_lines():
+                if line.startswith("data: "):
+                    yield f"{line}\n\n"
+                elif line.strip() == "":
+                    yield "\n"
+                else:
+                    yield f"{line}\n"
+
+    except Exception as e:
+        yield f"data: {json.dumps({'error': {'message': str(e), 'type': 'internal_error'}})}\n\n"
+        yield "data: [DONE]\n\n"

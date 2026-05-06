@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 
 from local_openai2anthropic.config import Settings, get_config_file, get_settings
 from local_openai2anthropic.protocol import AnthropicError, AnthropicErrorResponse
-from local_openai2anthropic.router import router
+from local_openai2anthropic.router import openai_router, router
 from local_openai2anthropic.web import web_router
 
 
@@ -120,7 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="local-openai2anthropic",
         description="A proxy server that converts Anthropic Messages API to OpenAI API",
-        version="0.6.4",
+        version="0.6.5",
         docs_url="/docs",
         redoc_url="/redoc",
     )
@@ -193,6 +193,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Include routers
     app.include_router(router)
+    app.include_router(openai_router)
     app.include_router(web_router)
 
     # Exception handlers
@@ -289,7 +290,7 @@ Examples:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.6.4",
+        version="%(prog)s 0.6.5",
     )
 
     # Create subparsers for commands
