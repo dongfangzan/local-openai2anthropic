@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
-      contents: read
+      contents: write
 
     steps:
     - name: Checkout code
@@ -36,3 +36,19 @@ jobs:
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         skip-existing: true
+
+    - name: Extract release notes
+      id: changelog
+      run: |
+        VERSION="${GITHUB_REF#refs/tags/v}"
+        sed -n "/^## \[$VERSION\]/,/^---/p" CHANGELOG.md | sed '$d' | sed '$d' > /tmp/release_notes.md
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: ${{ github.ref_name }}
+        body_path: /tmp/release_notes.md
+        draft: false
+        prerelease: false
