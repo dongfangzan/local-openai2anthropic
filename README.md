@@ -6,335 +6,192 @@
 
 **English | [中文](README_zh.md)**
 
-A lightweight proxy that lets applications built with [Claude SDK](https://github.com/anthropics/anthropic-sdk-python) talk to locally-hosted OpenAI-compatible LLMs.
+A lightweight proxy that bridges [Anthropic Messages API](https://docs.anthropic.com/en/api/messages) clients (Claude SDK, Claude Code, etc.) to any OpenAI-compatible backend (vLLM, SGLang, cloud APIs). Also supports direct OpenAI-format passthrough — no conversion overhead.
 
 ---
 
-## What Problem This Solves
+## What This Does
 
-Many local LLM tools (vLLM, SGLang, etc.) provide an OpenAI-compatible API. But if you've built your app using Anthropic's Claude SDK, you can't use them directly.
+```
+Anthropic Client                  OA2A Proxy                  OpenAI Backend
+(Claude SDK/Code)    ──POST /v1/messages──>    ──POST /v1/chat/completions──>    vLLM
+                      <──Anthropic format──    <──OpenAI format───               SGLang
+                                                                                  Cloud API
 
-This proxy translates Claude SDK calls to OpenAI API format in real-time, enabling:
+OpenAI Client         ──POST /v1/chat/completions──>    ──direct passthrough──>   (same backend)
+                      <──OpenAI format (as-is)──
+```
 
-- **Local LLM inference** with Claude-based apps
-- **Offline development** without cloud API costs
-- **Privacy-first AI** - data never leaves your machine
-- **Seamless model switching** between cloud and local
-- **Web Search tool** - built-in Tavily web search for local models
-- **Interleaved thinking** - Supports reasoning/thinking content with `<think>` markers in multi-turn conversations
----
+Two modes of operation:
 
-## Supported Local Backends
-
-Currently tested and supported:
-
-| Backend | Description | Status |
-|---------|-------------|--------|
-| [vLLM](https://github.com/vllm-project/vllm) | High-throughput LLM inference | ✅ Fully supported |
-| [SGLang](https://github.com/sgl-project/sglang) | Fast structured language model serving | ✅ Fully supported |
-
-Other OpenAI-compatible backends may work but are not fully tested.
+| Mode | Endpoint | Use Case |
+|------|----------|----------|
+| **Anthropic Proxy** | `POST /v1/messages` | Claude SDK / Claude Code apps talking to any OpenAI backend |
+| **OpenAI Passthrough** | `POST /v1/chat/completions` | OpenAI-native clients bypassing conversion entirely |
 
 ---
 
 ## Quick Start
 
-### Option 1: Docker Deployment (Recommended for Production)
-
-#### Quick Start with Docker Hub (No Build Required)
-
-Pull and run the official image directly:
-
-```bash
-# Create .env file
-cat > .env << 'EOF'
-OA2A_OPENAI_API_KEY=your-openai-api-key
-OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1
-OA2A_PORT=8080
-EOF
-
-# Run with docker run
-docker run -d \
-  --name oa2a \
-  --env-file .env \
-  -p 8080:8080 \
-  --restart unless-stopped \
-  dongfangzan/local-openai2anthropic:latest
-
-# Or use docker-compose (see docker-compose.yml in repo)
-docker-compose up -d
-```
-
-Available tags:
-- `latest` - Latest stable release
-- `0.4.0`, `0.4`, `0` - Version-specific tags
-- `main` - Latest development build
-
-#### Build from Source
-
-If you prefer to build the image yourself:
-
-```bash
-# Clone the repository
-git clone https://github.com/dongfangzan/local-openai2anthropic.git
-cd local-openai2anthropic
-
-# Create .env file with your configuration
-cat > .env << 'EOF'
-OA2A_OPENAI_API_KEY=your-openai-api-key
-OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1
-OA2A_PORT=8080
-EOF
-
-# Build and start with Docker Compose
-docker-compose up -d --build
-```
-
-**Docker Environment Variables:**
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `OA2A_OPENAI_API_KEY` | ✅ | - | OpenAI API key |
-| `OA2A_OPENAI_BASE_URL` | ✅ | - | Local LLM endpoint |
-| `OA2A_HOST` | ❌ | 0.0.0.0 | Server host |
-| `OA2A_PORT` | ❌ | 8080 | Server port |
-| `OA2A_API_KEY` | ❌ | - | Auth key for proxy |
-| `OA2A_LOG_LEVEL` | ❌ | INFO | DEBUG, INFO, WARNING, ERROR |
-| `OA2A_TAVILY_API_KEY` | ❌ | - | Enable web search |
-| `OA2A_CORS_ORIGINS` | ❌ | * | Allowed CORS origins |
-
-#### Docker Compose Deployment
-
-The easiest way to deploy with full configuration support:
-
-```bash
-# Clone the repository
-git clone https://github.com/dongfangzan/local-openai2anthropic.git
-cd local-openai2anthropic
-
-# Start with environment variables
-OA2A_OPENAI_API_KEY=your-api-key \
-OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1 \
-docker-compose up -d
-```
-
-**Configuration Methods** (choose one):
-
-1. **Directly Edit docker-compose.yml** (simplest, no env vars needed):
-   ```yaml
-   environment:
-     - OA2A_OPENAI_API_KEY=your-actual-api-key
-     - OA2A_OPENAI_BASE_URL=http://localhost:8000/v1
-     - OA2A_TAVILY_API_KEY=tvly-your-key  # optional
-   ```
-
-2. **Shell Environment Variables**:
-   ```bash
-   export OA2A_OPENAI_API_KEY=your-api-key
-   export OA2A_OPENAI_BASE_URL=http://localhost:8000/v1
-   docker-compose up -d
-   ```
-
-3. **.env File**:
-   ```bash
-   cp .env.example .env
-   # Edit .env, then: docker-compose up -d
-   ```
-
-4. **Config File Mount**:
-   ```bash
-   mkdir -p config && cp ~/.oa2a/config.toml config/
-   # Uncomment volumes section in docker-compose.yml
-   docker-compose up -d
-   ```
-
-**Docker Commands:**
-
-```bash
-# Build and start
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop
-docker-compose down
-
-# Rebuild after code changes
-docker-compose up -d --build
-```
-
-### Option 2: Run Claude Code (Docker, No Build Required)
-
-Use the pre-built Claude Code Docker image to run the CLI directly with your local LLM - no Anthropic account, no local installation needed.
-
-#### Quick Start
-
-```bash
-# 1. Configure and start both services
-cat > .env << 'EOF'
-OA2A_OPENAI_API_KEY=your-api-key
-OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1
-CLAUDE_MODEL=your-model-name
-EOF
-
-# 2. Start with docker-compose
-docker-compose up -d
-
-# 3. Enter Claude Code
-docker-compose exec claude-code claude --dangerously-skip-permissions
-```
-
-**Features:**
-- Pre-configured Claude Code CLI (no login required)
-- Node.js + Python development environment
-- Full sandbox support (bubblewrap, socat, ripgrep)
-- Customizable models via environment variables
-- Persistent workspace and conversation history
-
-**Model Configuration:**
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CLAUDE_MODEL` | kimi-k2.5 | Default model |
-| `CLAUDE_OPUS_MODEL` | kimi-k2.5 | Opus tier model |
-| `CLAUDE_SONNET_MODEL` | kimi-k2.5 | Sonnet tier model |
-| `CLAUDE_REASONING_MODEL` | kimi-k2.5 | Reasoning/thinking model |
-
-**Run without docker-compose:**
-
-```bash
-# Start OA2A proxy first
-docker run -d \
-  --name oa2a \
-  -e OA2A_OPENAI_API_KEY=your-api-key \
-  -e OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1 \
-  -p 8080:8080 \
-  dongfangzan/local-openai2anthropic:latest
-
-# Run Claude Code
-docker run -it --rm \
-  --link oa2a \
-  -e ANTHROPIC_BASE_URL=http://oa2a:8080 \
-  -e ANTHROPIC_AUTH_TOKEN=local \
-  -e CLAUDE_MODEL=your-model \
-  -v $(pwd):/workspace \
-  dongfangzan/claude-code:latest \
-  claude --dangerously-skip-permissions
-```
-
-### Option 3: pip Installation
-
-#### 1. Install
+### pip Install
 
 ```bash
 pip install local-openai2anthropic
 ```
 
-### 2. Configure Your LLM Backend (Optional)
-
-**Option A: Start a local LLM server**
-
-If you don't have an LLM server running, you can start one locally:
-
-Example with vLLM:
-```bash
-vllm serve meta-llama/Llama-2-7b-chat-hf
-# vLLM starts OpenAI-compatible API at http://localhost:8000/v1
-```
-
-Or with SGLang:
-```bash
-sglang launch --model-path meta-llama/Llama-2-7b-chat-hf --port 8000
-# SGLang starts at http://localhost:8000/v1
-```
-
-**Option B: Use an existing OpenAI-compatible API**
-
-If you already have a deployed OpenAI-compatible API (local or remote), you can use it directly. Just note the base URL for the next step.
-
-Examples:
-- Local vLLM/SGLang: `http://localhost:8000/v1`
-- Remote API: `https://api.example.com/v1`
-
-> **Note:** If you're using [Ollama](https://ollama.com), it natively supports the Anthropic API format, so you don't need this proxy. Just point your Claude SDK directly to `http://localhost:11434/v1`.
-
-### 3. Start the Proxy (Recommended)
-
-Run the following command to start the proxy in background mode:
+First run launches an interactive setup wizard:
 
 ```bash
 oa2a start
 ```
 
-**First-time setup**: If `~/.oa2a/config.toml` doesn't exist, an interactive setup wizard will guide you through:
-- Enter your OpenAI API Key (for the local LLM backend)
-- Enter the base URL of your local LLM (e.g., `http://localhost:8000/v1`)
-- Configure server host and port (optional)
-- Set server API key for authentication (optional)
-
-After configuration, the server starts at `http://localhost:8080`.
-
-**Daemon management commands:**
+Or run in foreground:
 
 ```bash
-oa2a logs               # Show last 50 lines of logs
-oa2a logs -f            # Follow logs in real-time (Ctrl+C to exit)
-oa2a status             # Check if server is running
-oa2a stop               # Stop background server
-oa2a restart            # Restart with same settings
+oa2a
 ```
 
-**Manual Configuration**
-
-You can also manually create/edit the config file at `~/.oa2a/config.toml`:
-
-```toml
-# OA2A Configuration File
-openai_api_key = "dummy"
-openai_base_url = "http://localhost:8000/v1"
-host = "0.0.0.0"
-port = 8080
-```
-
-**Option B: Run in foreground**
+### Docker
 
 ```bash
-oa2a                    # Run server in foreground (blocking)
-# Press Ctrl+C to stop
+docker run -d --name oa2a -p 8080:8080 \
+  -e OA2A_OPENAI_API_KEY=your-key \
+  -e OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1 \
+  dongfangzan/local-openai2anthropic:latest
 ```
 
-### 4. Use in Your App
+### Usage Example
 
 ```python
 import anthropic
 
-client = anthropic.Anthropic(
-    base_url="http://localhost:8080",  # Point to proxy
-    api_key="dummy-key",  # Not used
-)
+client = anthropic.Anthropic(base_url="http://localhost:8080", api_key="any")
 
 message = client.messages.create(
-    model="meta-llama/Llama-2-7b-chat-hf",  # Your local model name
+    model="your-model",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Hello!"}],
 )
-
 print(message.content[0].text)
 ```
 
 ---
 
-## Using with Claude Code
-
-You can configure [Claude Code](https://github.com/anthropics/claude-code) to use your local LLM through this proxy.
-
-### Option 1: Docker (Recommended - No Installation Required)
-
-Use the pre-built Claude Code Docker image with your local LLM:
+## Daemon Management
 
 ```bash
-# Start with docker-compose (includes both OA2A proxy and Claude Code)
+oa2a start              # Start in background
+oa2a stop               # Stop background server
+oa2a restart            # Restart background server
+oa2a status             # Check if running
+oa2a logs               # Show recent logs
+oa2a logs -f            # Follow logs in real-time
+```
+
+---
+
+## Configuration
+
+Config file: `~/.oa2a/config.toml` (auto-created)
+
+### Core Settings
+
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `openai_api_key` | Yes | — | API key for the upstream backend |
+| `openai_base_url` | Yes | `https://api.openai.com/v1` | Upstream backend URL |
+| `openai_org_id` | No | — | OpenAI Organization ID |
+| `openai_project_id` | No | — | OpenAI Project ID |
+| `host` | No | `0.0.0.0` | Server bind address |
+| `port` | No | `8080` | Server port |
+| `api_key` | No | — | Auth key for this proxy (Bearer token) |
+| `request_timeout` | No | `300.0` | Upstream request timeout in seconds |
+| `log_level` | No | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+
+### Model Name Mapping
+
+Map Anthropic model names to backend model names with wildcard support:
+
+```toml
+default_model = "kimi-k2.5"
+
+[[model_mapping]]
+from = "sonnet"
+to = "kimi-k2.5"
+
+[[model_mapping]]
+from = "*opus*"
+to = "deepseek-v4"
+```
+
+`from` supports `*` and `?` wildcards. `default_model` is the fallback when no rule matches.
+
+### Web Search
+
+Supports two search providers: [Tavily](https://tavily.com) and [TongXiao (通晓)](https://www.aliyun.com/product/tongxiao).
+
+```toml
+tavily_api_key = "tvly-xxx"
+tongxiao_api_key = "xxx"
+websearch_provider = "tavily"       # "tavily", "tongxiao", or "both"
+websearch_max_uses = 5
+tavily_max_results = 5
+tongxiao_max_results = 5
+```
+
+### CORS
+
+```toml
+cors_origins = ["*"]
+cors_credentials = true
+cors_methods = ["*"]
+cors_headers = ["*"]
+```
+
+---
+
+## API Endpoints
+
+### Anthropic-Compatible
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/messages` | Create a message (streaming via `stream: true`) |
+| `GET` | `/v1/models` | List available models (proxied) |
+| `POST` | `/v1/messages/count_tokens` | Count tokens (local tiktoken estimation) |
+| `GET` | `/health` | Health check |
+
+### OpenAI-Native Passthrough
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/chat/completions` | OpenAI-format chat completions (streaming & non-streaming) |
+
+The passthrough endpoint forwards requests directly to the upstream — no validation, no conversion, no model mapping. All fields (including `chat_template_kwargs`, `reasoning_effort`, etc.) are preserved as-is.
+
+---
+
+## Features
+
+- **Streaming** — SSE real-time token streaming in both Anthropic and OpenAI modes
+- **Tool Calling** — Claude-compatible tool use (`tool_use` / `tool_result`) converted to OpenAI function calls
+- **Vision** — Multi-modal image input via `image_url` content blocks
+- **Thinking / Reasoning** — Supports `thinking` blocks with `chat_template_kwargs` (vLLM/SGLang) and `output_config.effort` to `reasoning_effort` mapping for DeepSeek V4
+- **Web Search** — Server-side web search via Tavily or TongXiao (通晓), usable with any model
+- **Model Mapping** — Wildcard-based model name resolution
+- **API Auth** — Optional Bearer token authentication for the proxy itself
+- **Web Dashboard** — Built-in web UI at `/` for monitoring request statistics
+- **Daemon Mode** — Background service management (start/stop/restart/status/logs)
+
+---
+
+## Using with Claude Code
+
+### Docker (Recommended)
+
+The repo includes a `docker-compose.yml` with both OA2A proxy and Claude Code pre-configured:
+
+```bash
 cat > .env << 'EOF'
 OA2A_OPENAI_API_KEY=your-api-key
 OA2A_OPENAI_BASE_URL=http://host.docker.internal:8000/v1
@@ -345,128 +202,36 @@ docker-compose up -d
 docker-compose exec claude-code claude --dangerously-skip-permissions
 ```
 
-**Docker Image Features:**
-- Pre-installed Claude Code CLI (no login/Anthropic account needed)
-- Node.js 20 + Python 3.11 development environment
-- Full sandbox support (bubblewrap, ripgrep, socat)
-- Workspace persistence
+### Local Installation
 
-### Option 2: Local Installation
-
-1. **Edit Claude Code config file** at `~/.claude/settings.json`:
+Configure `~/.claude/settings.json`:
 
 ```json
 {
   "env": {
     "ANTHROPIC_BASE_URL": "http://localhost:8080",
-    "ANTHROPIC_API_KEY": "dummy-key",
-    "ANTHROPIC_MODEL": "meta-llama/Llama-2-7b-chat-hf",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "meta-llama/Llama-2-7b-chat-hf",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL": "meta-llama/Llama-2-7b-chat-hf",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "meta-llama/Llama-2-7b-chat-hf",
-    "ANTHROPIC_REASONING_MODEL": "meta-llama/Llama-2-7b-chat-hf"
+    "ANTHROPIC_API_KEY": "any",
+    "ANTHROPIC_MODEL": "your-model",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "your-model",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "your-model",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "your-model"
   }
 }
 ```
 
-| Variable | Description |
-|----------|-------------|
-| `ANTHROPIC_MODEL` | General model setting |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` | Default model for Sonnet mode (Claude Code default) |
-| `ANTHROPIC_DEFAULT_OPUS_MODEL` | Default model for Opus mode |
-| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Default model for Haiku mode |
-| `ANTHROPIC_REASONING_MODEL` | Default model for reasoning tasks |
-
-### Complete Workflow Example (Local Installation)
-
-Make sure `~/.claude/settings.json` is configured as described above.
-
-Terminal 1 - Start your local LLM:
-```bash
-vllm serve meta-llama/Llama-2-7b-chat-hf
-```
-
-Terminal 2 - Start the proxy (background mode):
-```bash
-# First run: interactive setup wizard will guide you
-oa2a start
-```
-
-Terminal 3 - Launch Claude Code:
-```bash
-claude
-```
-
-Now Claude Code will use your local LLM instead of the cloud API.
-
-To stop the proxy:
-```bash
-oa2a stop
-```
+Then start the proxy (`oa2a start`) and launch Claude Code (`claude`).
 
 ---
 
-## Features
+## Supported Backends
 
-- ✅ **Streaming responses** - Real-time token streaming via SSE
-- ✅ **Tool calling** - Local LLM function calling support
-- ✅ **Vision models** - Multi-modal input for vision-capable models
-- ✅ **Web Search** - Built-in Tavily web search for local models
-- ✅ **Interleaved thinking** - Supports reasoning/thinking content with `<think>` markers in multi-turn conversations
+| Backend | Status |
+|---------|--------|
+| [vLLM](https://github.com/vllm-project/vllm) | Fully supported |
+| [SGLang](https://github.com/sgl-project/sglang) | Fully supported |
+| Any OpenAI-compatible API | Should work |
 
----
-
-## Web Search 🔍
-
-Enable web search for your local LLM using [Tavily](https://tavily.com).
-
-**Setup:**
-
-1. Get a free API key at [tavily.com](https://tavily.com)
-
-2. Add to your config (`~/.oa2a/config.toml`):
-```toml
-tavily_api_key = "tvly-your-api-key"
-```
-
-3. Use `web_search_20250305` tool in your app - the proxy handles search automatically.
-
-**Options:** `tavily_max_results` (default: 5), `tavily_timeout` (default: 30), `websearch_max_uses` (default: 5)
-
----
-
-## Configuration
-
-Config file: `~/.oa2a/config.toml` (auto-created on first run)
-
-| Option | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `openai_base_url` | ✅ | - | Local LLM endpoint (e.g., `http://localhost:8000/v1`) |
-| `openai_api_key` | ✅ | - | API key for local LLM |
-| `port` | ❌ | 8080 | Proxy port |
-| `host` | ❌ | 0.0.0.0 | Proxy host |
-| `api_key` | ❌ | - | Auth key for this proxy |
-| `tavily_api_key` | ❌ | - | Enable web search |
-| `log_level` | ❌ | INFO | DEBUG, INFO, WARNING, ERROR |
-
----
-
-## Architecture
-
-```
-Your App (Claude SDK)
-         │
-         ▼
-┌─────────────────────┐
-│  local-openai2anthropic  │  ← This proxy
-│  (Port 8080)        │
-└─────────────────────┘
-         │
-         ▼
-Your Local LLM Server
-(vLLM / SGLang)
-(OpenAI-compatible API)
-```
+> Ollama natively supports the Anthropic API format — point Claude SDK directly to `http://localhost:11434/v1`, no proxy needed.
 
 ---
 
@@ -477,8 +242,10 @@ git clone https://github.com/dongfangzan/local-openai2anthropic.git
 cd local-openai2anthropic
 pip install -e ".[dev]"
 
-pytest
+pytest                           # 445+ tests, >80% coverage
 ```
+
+---
 
 ## License
 
