@@ -12,13 +12,13 @@ A lightweight proxy that bridges Anthropic and OpenAI ecosystems — run Claude 
 
 ### Why OA2A
 
-- **双向协议转换** — Anthropic Messages API ↔ OpenAI Chat Completions API，让 Claude SDK / Claude Code 无缝对接 vLLM、SGLang 等任意 OpenAI 后端
-- **OpenAI 原生透传** — 同时提供 `POST /v1/chat/completions` 端点，请求原样转发，零转换损耗，保留所有上游字段
-- **服务端 Web Search** — 内置 Tavily / 通晓 搜索引擎，任何模型都能获得联网能力，无需客户端改造
-- **交错思考 (Interleaved Thinking)** — 完整支持 `thinking` 推理块，配合 `chat_template_kwargs` 和 `reasoning_effort`，DeepSeek V4 等推理模型开箱即用
-- **流式 & 工具调用 & 视觉** — SSE 实时流式、Claude tool_use 转换、多模态图像输入，覆盖核心 API 能力
-- **模型名映射** — 通配符规则将 Anthropic 模型名自动映射到后端模型，告别手动改配置
-- **守护进程 + Web 面板** — `oa2a start/stop/logs` 一键管理，内置 Web 仪表盘监控请求统计
+- **Bidirectional Protocol Conversion** — Anthropic Messages API ↔ OpenAI Chat Completions API. Run Claude SDK / Claude Code on any OpenAI-compatible backend (vLLM, SGLang, cloud APIs).
+- **OpenAI-Native Passthrough** — `POST /v1/chat/completions` forwards requests as-is with zero conversion overhead. All upstream fields preserved.
+- **Server-Side Web Search** — Built-in Tavily / TongXiao search. Give any model internet access without client-side changes.
+- **Interleaved Thinking** — Full support for `thinking` blocks with `chat_template_kwargs` and `reasoning_effort`. DeepSeek V4 and other reasoning models work out of the box.
+- **Streaming, Tools & Vision** — SSE real-time streaming, Claude `tool_use` conversion, multi-modal image input. Full API surface coverage.
+- **Model Name Mapping** — Wildcard rules map Anthropic model names to backend models automatically.
+- **Daemon + Web Dashboard** — `oa2a start/stop/logs` for one-command management. Built-in web UI for request monitoring.
 
 ---
 
