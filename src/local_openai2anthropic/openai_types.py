@@ -70,8 +70,8 @@ class ChatCompletionMessage(BaseModel):
     role: str
     content: Optional[str] = None
     tool_calls: Optional[list[ChatCompletionMessageToolCall]] = None
-    # Additional field for reasoning content (thinking) from vLLM/SGLang
     reasoning_content: Optional[str] = None
+    reasoning: Optional[str] = None  # vLLM uses "reasoning", SGLang uses "reasoning_content"
 
 
 class Choice(BaseModel):
@@ -104,8 +104,8 @@ class ChoiceDelta(BaseModel):
     role: Optional[str] = None
     content: Optional[str] = None
     tool_calls: Optional[list[ChatCompletionDeltaToolCall]] = None
-    # Additional field for reasoning content (thinking) from vLLM/SGLang
     reasoning_content: Optional[str] = None
+    reasoning: Optional[str] = None  # vLLM uses "reasoning", SGLang uses "reasoning_content"
 
 
 class StreamingChoice(BaseModel):

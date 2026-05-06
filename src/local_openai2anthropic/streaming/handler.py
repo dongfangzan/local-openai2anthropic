@@ -185,8 +185,9 @@ async def _stream_response(
                     finish_reason = choice["finish_reason"]
 
                 # Handle reasoning content (thinking)
-                if delta.get("reasoning_content"):
-                    reasoning = delta["reasoning_content"]
+                # vLLM uses "reasoning", SGLang uses "reasoning_content" — support both
+                reasoning = delta.get("reasoning") or delta.get("reasoning_content")
+                if reasoning:
                     pending_text_prefix = ""
                     # Start thinking content block if not already started
                     if not content_block_started or current_block_type != "thinking":

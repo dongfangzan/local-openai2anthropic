@@ -522,7 +522,8 @@ def convert_openai_to_anthropic(
     content: list[ContentBlock] = []
 
     # Add reasoning content (thinking) first if present
-    reasoning_content = getattr(message, "reasoning_content", None)
+    # vLLM uses "reasoning", SGLang uses "reasoning_content" — support both
+    reasoning_content: str | None = getattr(message, "reasoning", None) or getattr(message, "reasoning_content", None)
     if reasoning_content:
         content.append(
             BetaThinkingBlock(
