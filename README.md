@@ -6,7 +6,19 @@
 
 **English | [中文](README_zh.md)**
 
-A lightweight proxy that bridges [Anthropic Messages API](https://docs.anthropic.com/en/api/messages) clients (Claude SDK, Claude Code, etc.) to any OpenAI-compatible backend (vLLM, SGLang, cloud APIs). Also supports direct OpenAI-format passthrough — no conversion overhead.
+A lightweight proxy that bridges Anthropic and OpenAI ecosystems — run Claude SDK apps on any OpenAI-compatible backend, or use OpenAI clients directly with zero conversion overhead.
+
+---
+
+### Why OA2A
+
+- **双向协议转换** — Anthropic Messages API ↔ OpenAI Chat Completions API，让 Claude SDK / Claude Code 无缝对接 vLLM、SGLang 等任意 OpenAI 后端
+- **OpenAI 原生透传** — 同时提供 `POST /v1/chat/completions` 端点，请求原样转发，零转换损耗，保留所有上游字段
+- **服务端 Web Search** — 内置 Tavily / 通晓 搜索引擎，任何模型都能获得联网能力，无需客户端改造
+- **交错思考 (Interleaved Thinking)** — 完整支持 `thinking` 推理块，配合 `chat_template_kwargs` 和 `reasoning_effort`，DeepSeek V4 等推理模型开箱即用
+- **流式 & 工具调用 & 视觉** — SSE 实时流式、Claude tool_use 转换、多模态图像输入，覆盖核心 API 能力
+- **模型名映射** — 通配符规则将 Anthropic 模型名自动映射到后端模型，告别手动改配置
+- **守护进程 + Web 面板** — `oa2a start/stop/logs` 一键管理，内置 Web 仪表盘监控请求统计
 
 ---
 
