@@ -158,6 +158,80 @@ class TestAnthropicToOpenAI:
             "preserve_thinking": True,
         }
 
+    def test_thinking_with_output_config_effort(self):
+        """Test Anthropic output_config.effort conversion."""
+        params: MessageCreateParams = {
+            "model": "deepseek-ai/DeepSeek-V4-Flash",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "thinking": {"type": "adaptive"},
+            "output_config": {"effort": "max"},
+        }
+
+        result = convert_anthropic_to_openai(params)
+
+        assert result["chat_template_kwargs"] == {
+            "thinking": True,
+            "enable_thinking": True,
+            "preserve_thinking": True,
+            "reasoning_effort": "max",
+        }
+
+    def test_thinking_with_xhigh_output_config_effort(self):
+        """Test xhigh effort is forwarded as an Anthropic effort tier."""
+        params: MessageCreateParams = {
+            "model": "deepseek-ai/DeepSeek-V4-Flash",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "thinking": {"type": "adaptive"},
+            "output_config": {"effort": "xhigh"},
+        }
+
+        result = convert_anthropic_to_openai(params)
+
+        assert result["chat_template_kwargs"] == {
+            "thinking": True,
+            "enable_thinking": True,
+            "preserve_thinking": True,
+            "reasoning_effort": "xhigh",
+        }
+
+    def test_deepseek_v4_thinking_defaults_to_high_reasoning_effort(self):
+        """Test DeepSeek V4 thinking defaults to high effort."""
+        params: MessageCreateParams = {
+            "model": "deepseek-ai/DeepSeek-V4-Flash",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "thinking": {"type": "enabled"},
+        }
+
+        result = convert_anthropic_to_openai(params)
+
+        assert result["chat_template_kwargs"] == {
+            "thinking": True,
+            "enable_thinking": True,
+            "preserve_thinking": True,
+            "reasoning_effort": "high",
+        }
+
+    def test_thinking_budget_does_not_infer_reasoning_effort(self):
+        """Test budget_tokens does not infer an Anthropic effort tier."""
+        params: MessageCreateParams = {
+            "model": "deepseek-ai/DeepSeek-V4-Flash",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "thinking": {"type": "enabled", "budget_tokens": 64000},
+        }
+
+        result = convert_anthropic_to_openai(params)
+
+        assert result["chat_template_kwargs"] == {
+            "thinking": True,
+            "enable_thinking": True,
+            "preserve_thinking": True,
+            "reasoning_effort": "high",
+        }
+
     def test_thinking_disabled(self):
         """Test thinking disabled conversion."""
         params: MessageCreateParams = {

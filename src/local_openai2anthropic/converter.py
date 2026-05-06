@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 # Format: x-anthropic-billing-header:cc version=...;cc_entrypoint=...;cch=...;
 # The cch value changes on each request, breaking cache hits
 CLAUDE_BILLING_HEADER_PATTERN = "x-anthropic-billing-header"
+ANTHROPIC_EFFORT_LEVELS = {"low", "medium", "high", "xhigh", "max"}
 
 
 def _strip_claude_billing_header(text: str) -> str:
@@ -77,6 +78,45 @@ def _strip_claude_billing_header(text: str) -> str:
     return result
 
 
+def _is_deepseek_v4_model(model: Any) -> bool:
+    """Return whether a resolved model name uses the DeepSeek V4 chat template."""
+    if not isinstance(model, str):
+        return False
+    normalized = model.lower().replace("_", "-")
+    return "deepseek-v4" in normalized or "deepseekai/deepseek-v4" in normalized
+
+
+def _normalize_reasoning_effort(value: Any) -> str | None:
+    """Normalize Anthropic output_config.effort values."""
+    if not isinstance(value, str):
+        return None
+    effort = value.lower()
+    if effort in ANTHROPIC_EFFORT_LEVELS:
+        return effort
+    return None
+
+
+def _get_output_config_effort(output_config: Any) -> str | None:
+    """Extract the Anthropic effort tier from output_config."""
+    if isinstance(output_config, dict):
+        return _normalize_reasoning_effort(output_config.get("effort"))
+    return _normalize_reasoning_effort(getattr(output_config, "effort", None))
+
+
+def _resolve_reasoning_effort(
+    model: Any, thinking: dict[str, Any], output_config: Any
+) -> str | None:
+    """Resolve chat template reasoning effort from Anthropic effort tiers."""
+    effort = _get_output_config_effort(output_config)
+    if effort:
+        return effort
+
+    if not _is_deepseek_v4_model(model):
+        return None
+
+    return "high"
+
+
 def convert_anthropic_to_openai(
     anthropic_params: MessageCreateParams,
     enabled_server_tools: list[type] | None = None,
@@ -105,6 +145,7 @@ def convert_anthropic_to_openai(
     top_p = anthropic_params.get("top_p")
     repetition_penalty = anthropic_params.get("repetition_penalty")
     thinking = anthropic_params.get("thinking")
+    output_config = anthropic_params.get("output_config")
     # metadata is accepted but not forwarded to OpenAI
 
     # Extract server tool configurations using registry
@@ -232,6 +273,7 @@ def convert_anthropic_to_openai(
     # Handle thinking parameter
     # vLLM/SGLang use chat_template_kwargs.thinking to toggle thinking mode
     # Some models use "thinking", others use "enable_thinking", so we include both
+    # DeepSeek V4 additionally uses Anthropic effort tiers as reasoning_effort
     # TODO: Support for multi-turn thinking conversation history
     # See issue: https://github.com/dongfangzan/local-openai2anthropic/issues/2
     if thinking and isinstance(thinking, dict):
@@ -243,13 +285,15 @@ def convert_anthropic_to_openai(
                 "enable_thinking": True,
                 "preserve_thinking": True,
             }
+            reasoning_effort = _resolve_reasoning_effort(model, thinking, output_config)
+            if reasoning_effort:
+                params["chat_template_kwargs"]["reasoning_effort"] = reasoning_effort
 
-            # Log if budget_tokens was provided but will be ignored
             budget_tokens = thinking.get("budget_tokens")
-            if budget_tokens is not None:
+            if budget_tokens is not None and not reasoning_effort:
                 logger.debug(
-                    "thinking.budget_tokens (%s) is accepted but not supported by "
-                    "vLLM/SGLang. Using default thinking configuration.",
+                    "thinking.budget_tokens (%s) is accepted for API compatibility. "
+                    "Use output_config.effort for effort-tier chat templates.",
                     budget_tokens,
                 )
         elif thinking_type == "adaptive":
@@ -259,6 +303,9 @@ def convert_anthropic_to_openai(
                 "enable_thinking": True,
                 "preserve_thinking": True,
             }
+            reasoning_effort = _resolve_reasoning_effort(model, thinking, output_config)
+            if reasoning_effort:
+                params["chat_template_kwargs"]["reasoning_effort"] = reasoning_effort
         else:
             # Default to disabled thinking mode if not explicitly enabled
             params["chat_template_kwargs"] = {

@@ -15,17 +15,15 @@ def main():
         api_key="dummy-key",
     )
 
-    # Example 1: Enable thinking mode
+    # Example 1: Enable thinking mode with an Anthropic effort tier
     print("=== Thinking Mode Enabled ===")
     message = client.messages.create(
-        model="deepseek-r1",  # A reasoning-capable model
+        model="deepseek-ai/DeepSeek-V4-Flash",  # A reasoning-capable model
         max_tokens=4096,
         thinking={
-            "type": "enabled",
-            # budget_tokens is accepted for API compatibility but not used
-            # since vLLM/SGLang don't support fine-grained budget control
-            "budget_tokens": 2048,
+            "type": "adaptive",
         },
+        output_config={"effort": "max"},
         messages=[
             {"role": "user", "content": "Solve this step by step: What is 15 * 23?"}
         ],
