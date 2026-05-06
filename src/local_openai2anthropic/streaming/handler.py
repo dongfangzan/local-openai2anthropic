@@ -19,6 +19,36 @@ from local_openai2anthropic.utils.tokens import (
 logger = logging.getLogger(__name__)
 
 
+def _extract_cache_tokens(usage: Any) -> tuple[int | None, int | None]:
+    """Extract cache read and cache creation tokens from a vLLM/SGLang usage dict.
+
+    vLLM may report cache hits in multiple forms:
+      - ``cache_read_input_tokens`` / ``cache_creation_input_tokens`` at the top level
+      - ``prompt_tokens_details.cached_tokens`` (standard OpenAI-compatible form)
+
+    Returns a ``(cache_read, cache_creation)`` tuple.  Each value is ``None`` when
+    the corresponding field is absent or zero.
+    """
+    if not isinstance(usage, dict):
+        return None, None
+
+    cache_read = usage.get("cache_read_input_tokens")
+    cache_creation = usage.get("cache_creation_input_tokens")
+
+    # Fallback: vLLM standard OpenAI-compatible format
+    if not cache_read:
+        details = usage.get("prompt_tokens_details") or {}
+        if isinstance(details, dict):
+            cached = details.get("cached_tokens")
+            if isinstance(cached, int) and cached > 0:
+                cache_read = cached
+
+    return (
+        cache_read if isinstance(cache_read, int) and cache_read > 0 else None,
+        cache_creation if isinstance(cache_creation, int) and cache_creation > 0 else None,
+    )
+
+
 async def _stream_response(
     client: httpx.AsyncClient,
     url: str,
@@ -64,6 +94,8 @@ async def _stream_response(
             finish_reason = None
             input_tokens = _estimate_input_tokens(json_data)
             output_tokens = 0
+            cache_read_input_tokens = None
+            cache_creation_input_tokens = None
             message_id = None
             sent_message_delta = False
             pending_text_prefix = ""
@@ -90,8 +122,8 @@ async def _stream_response(
                             "usage": {
                                 "input_tokens": input_tokens,
                                 "output_tokens": output_tokens,
-                                "cache_creation_input_tokens": None,
-                                "cache_read_input_tokens": None,
+                                "cache_creation_input_tokens": cache_creation_input_tokens,
+                                "cache_read_input_tokens": cache_read_input_tokens,
                             },
                         }
                         logger.debug(
@@ -113,6 +145,11 @@ async def _stream_response(
                     message_id = chunk.get("id", "")
                     usage = chunk.get("usage") or {}
                     input_tokens = usage.get("prompt_tokens", input_tokens)
+                    cr_init, cc_init = _extract_cache_tokens(usage)
+                    if cr_init is not None:
+                        cache_read_input_tokens = cr_init
+                    if cc_init is not None:
+                        cache_creation_input_tokens = cc_init
 
                     start_event = {
                         "type": "message_start",
@@ -127,8 +164,8 @@ async def _stream_response(
                             "usage": {
                                 "input_tokens": input_tokens,
                                 "output_tokens": 0,
-                                "cache_creation_input_tokens": None,
-                                "cache_read_input_tokens": None,
+                                "cache_creation_input_tokens": cache_creation_input_tokens,
+                                "cache_read_input_tokens": cache_read_input_tokens,
                             },
                         },
                     }
@@ -145,6 +182,11 @@ async def _stream_response(
                     if usage:
                         input_tokens = usage.get("prompt_tokens", input_tokens)
                         output_tokens = usage.get("completion_tokens", output_tokens)
+                        cr, cc = _extract_cache_tokens(usage)
+                        if cr is not None:
+                            cache_read_input_tokens = cr
+                        if cc is not None:
+                            cache_creation_input_tokens = cc
                         if content_block_started:
                             yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': content_block_index})}\n\n"
                             content_block_started = False
@@ -166,8 +208,8 @@ async def _stream_response(
                                     "prompt_tokens", input_tokens
                                 ),
                                 "output_tokens": usage.get("completion_tokens", 0),
-                                "cache_creation_input_tokens": None,
-                                "cache_read_input_tokens": None,
+                                "cache_creation_input_tokens": cache_creation_input_tokens,
+                                "cache_read_input_tokens": cache_read_input_tokens,
                             },
                         }
                         logger.debug(

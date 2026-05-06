@@ -18,6 +18,7 @@ from local_openai2anthropic.router import (
     count_tokens,
     ServerToolHandler,
 )
+from local_openai2anthropic.streaming.handler import _extract_cache_tokens
 from local_openai2anthropic.config import Settings
 
 
@@ -360,6 +361,151 @@ class TestStreamResponseComprehensive:
 
         stream_text = ''.join(chunks)
         assert 'message_start' in stream_text
+
+    @pytest.mark.asyncio
+    async def test_stream_cache_tokens_in_first_chunk(self):
+        """Test streaming with cache tokens in first chunk usage."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        async def aiter_lines():
+            for line in [
+                'data: {"id": "msg_123", "choices": [{"delta": {"content": "Hello"}}], "usage": {"prompt_tokens": 100, "completion_tokens": 0, "cache_read_input_tokens": 80, "cache_creation_input_tokens": 20}}',
+                'data: [DONE]',
+            ]:
+                yield line
+        mock_response.aiter_lines = aiter_lines
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=async_context_manager(mock_response))
+
+        chunks = []
+        async for chunk in _stream_response(
+            mock_client,
+            "http://test.com",
+            {},
+            {},
+            "test-model",
+        ):
+            chunks.append(chunk)
+
+        stream_text = ''.join(chunks)
+        assert 'message_start' in stream_text
+        assert 'cache_read_input_tokens' in stream_text
+        assert 'cache_creation_input_tokens' in stream_text
+
+    @pytest.mark.asyncio
+    async def test_stream_cache_tokens_in_usage_chunk(self):
+        """Test streaming with cache tokens in usage-only chunk after content."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        async def aiter_lines():
+            for line in [
+                'data: {"id": "msg_123", "choices": [{"delta": {"content": "Hello"}}]}',
+                'data: {"usage": {"prompt_tokens": 100, "completion_tokens": 5, "cache_read_input_tokens": 80, "cache_creation_input_tokens": 20}}',
+                'data: [DONE]',
+            ]:
+                yield line
+        mock_response.aiter_lines = aiter_lines
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=async_context_manager(mock_response))
+
+        chunks = []
+        async for chunk in _stream_response(
+            mock_client,
+            "http://test.com",
+            {},
+            {},
+            "test-model",
+        ):
+            chunks.append(chunk)
+
+        stream_text = ''.join(chunks)
+        assert 'message_delta' in stream_text
+        assert 'cache_read_input_tokens' in stream_text
+        assert 'cache_creation_input_tokens' in stream_text
+
+    @pytest.mark.asyncio
+    async def test_stream_cache_tokens_vllm_format(self):
+        """Test streaming with cache tokens in vLLM prompt_tokens_details format."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+
+        async def aiter_lines():
+            for line in [
+                'data: {"id": "msg_123", "choices": [{"delta": {"content": "Hello"}}]}',
+                'data: {"usage": {"prompt_tokens": 100, "completion_tokens": 5, "prompt_tokens_details": {"cached_tokens": 80}}}',
+                'data: [DONE]',
+            ]:
+                yield line
+        mock_response.aiter_lines = aiter_lines
+
+        mock_client = MagicMock()
+        mock_client.stream = MagicMock(return_value=async_context_manager(mock_response))
+
+        chunks = []
+        async for chunk in _stream_response(
+            mock_client,
+            "http://test.com",
+            {},
+            {},
+            "test-model",
+        ):
+            chunks.append(chunk)
+
+        stream_text = ''.join(chunks)
+        assert 'cache_read_input_tokens' in stream_text
+
+
+class TestExtractCacheTokens:
+    """Tests for _extract_cache_tokens helper."""
+
+    def test_top_level_cache_fields(self):
+        """Test extracting cache tokens from top-level usage fields."""
+        cr, cc = _extract_cache_tokens({
+            "cache_read_input_tokens": 100,
+            "cache_creation_input_tokens": 50,
+        })
+        assert cr == 100
+        assert cc == 50
+
+    def test_vllm_prompt_tokens_details_format(self):
+        """Test extracting cache tokens from vLLM prompt_tokens_details.cached_tokens."""
+        cr, cc = _extract_cache_tokens({
+            "prompt_tokens": 200,
+            "prompt_tokens_details": {"cached_tokens": 100},
+        })
+        assert cr == 100
+        assert cc is None
+
+    def test_non_dict_input(self):
+        """Test _extract_cache_tokens with non-dict input."""
+        cr, cc = _extract_cache_tokens("not a dict")
+        assert cr is None
+        assert cc is None
+
+    def test_none_input(self):
+        """Test _extract_cache_tokens with None input."""
+        cr, cc = _extract_cache_tokens(None)
+        assert cr is None
+        assert cc is None
+
+    def test_empty_dict(self):
+        """Test _extract_cache_tokens with empty dict."""
+        cr, cc = _extract_cache_tokens({})
+        assert cr is None
+        assert cc is None
+
+    def test_zero_cache_tokens_ignored(self):
+        """Test that zero cache tokens are treated as None."""
+        cr, cc = _extract_cache_tokens({
+            "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+        })
+        assert cr is None
+        assert cc is None
 
 
 class TestConvertResultToStreamComprehensive:
