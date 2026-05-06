@@ -29,6 +29,8 @@ Two modes of operation:
 | **Anthropic Proxy** | `POST /v1/messages` | Claude SDK / Claude Code apps talking to any OpenAI backend |
 | **OpenAI Passthrough** | `POST /v1/chat/completions` | OpenAI-native clients bypassing conversion entirely |
 
+![Architecture](./architecture.png)
+
 ---
 
 ## Quick Start
