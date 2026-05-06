@@ -12,16 +12,6 @@ A lightweight proxy that bridges [Anthropic Messages API](https://docs.anthropic
 
 ## What This Does
 
-```
-Anthropic Client                  OA2A Proxy                  OpenAI Backend
-(Claude SDK/Code)    ──POST /v1/messages──>    ──POST /v1/chat/completions──>    vLLM
-                      <──Anthropic format──    <──OpenAI format───               SGLang
-                                                                                  Cloud API
-
-OpenAI Client         ──POST /v1/chat/completions──>    ──direct passthrough──>   (same backend)
-                      <──OpenAI format (as-is)──
-```
-
 Two modes of operation:
 
 | Mode | Endpoint | Use Case |

@@ -12,16 +12,6 @@
 
 ## 工作原理
 
-```
-Anthropic 客户端                   OA2A 代理                    OpenAI 后端
-(Claude SDK/Code)    ──POST /v1/messages──>    ──POST /v1/chat/completions──>    vLLM
-                      <──Anthropic 格式──      <──OpenAI 格式────                 SGLang
-                                                                                   云端 API
-
-OpenAI 客户端         ──POST /v1/chat/completions──>    ──直接透传──>            (同上)
-                      <──OpenAI 格式（原样）──
-```
-
 两种运行模式：
 
 | 模式 | 端点 | 适用场景 |
