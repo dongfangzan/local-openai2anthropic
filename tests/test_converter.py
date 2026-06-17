@@ -279,6 +279,101 @@ class TestAnthropicToOpenAI:
             "preserve_thinking": True,
         }
 
+    # --- GLM reasoning_effort mapping -------------------------------------
+    # GLM chat templates (GLM-4.5/4.6/4.7/5.x) only wire two effective levels:
+    #   "high"  -> dials reasoning DOWN
+    #   unset   -> Max (HIGHEST, the default)
+    # Passing "low"/"medium"/"max" falls through to Max. We therefore map
+    # Anthropic low/medium -> GLM "high", and high/xhigh/max/unset -> unset.
+    def test_glm_thinking_no_effort_defaults_to_max(self):
+        """GLM with thinking on and no effort should not set reasoning_effort (Max)."""
+        params: MessageCreateParams = {
+            "model": "glm-5-2-pro",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "thinking": {"type": "enabled"},
+        }
+
+        result = convert_anthropic_to_openai(params)
+
+        assert result["chat_template_kwargs"] == {
+            "thinking": True,
+            "enable_thinking": True,
+            "preserve_thinking": True,
+        }
+
+    def test_glm_thinking_low_effort_maps_to_high(self):
+        """Anthropic low effort (want less reasoning) maps to GLM 'high' (GLM's low)."""
+        params: MessageCreateParams = {
+            "model": "glm-5-2-pro",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "thinking": {"type": "enabled"},
+            "output_config": {"effort": "low"},
+        }
+
+        result = convert_anthropic_to_openai(params)
+
+        assert result["chat_template_kwargs"] == {
+            "thinking": True,
+            "enable_thinking": True,
+            "preserve_thinking": True,
+            "reasoning_effort": "high",
+        }
+
+    def test_glm_thinking_medium_effort_maps_to_high(self):
+        """Anthropic medium effort also maps to GLM 'high' (GLM has no middle band)."""
+        params: MessageCreateParams = {
+            "model": "zai-org/GLM-5.2-FP8",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "thinking": {"type": "adaptive"},
+            "output_config": {"effort": "medium"},
+        }
+
+        result = convert_anthropic_to_openai(params)
+
+        assert result["chat_template_kwargs"] == {
+            "thinking": True,
+            "enable_thinking": True,
+            "preserve_thinking": True,
+            "reasoning_effort": "high",
+        }
+
+    @pytest.mark.parametrize("effort", ["high", "xhigh", "max"])
+    def test_glm_thinking_high_effort_defaults_to_max(self, effort):
+        """Anthropic high/xhigh/max (want more reasoning) leaves GLM at Max (unset)."""
+        params: MessageCreateParams = {
+            "model": "glm-5-2-pro",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "thinking": {"type": "enabled"},
+            "output_config": {"effort": effort},
+        }
+
+        result = convert_anthropic_to_openai(params)
+
+        assert result["chat_template_kwargs"] == {
+            "thinking": True,
+            "enable_thinking": True,
+            "preserve_thinking": True,
+        }
+
+    def test_deepseek_v4_effort_not_affected_by_glm_branch(self):
+        """DeepSeek V4 still forwards the raw Anthropic tier verbatim."""
+        params: MessageCreateParams = {
+            "model": "deepseek-ai/DeepSeek-V4-Flash",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "thinking": {"type": "enabled"},
+            "output_config": {"effort": "low"},
+        }
+
+        result = convert_anthropic_to_openai(params)
+
+        # DeepSeek forwards the raw tier; GLM-only remapping must not apply.
+        assert result["chat_template_kwargs"]["reasoning_effort"] == "low"
+
 
 class TestStripClaudeBillingHeader:
     """Tests for Claude billing header stripping."""

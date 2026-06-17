@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.6.7] - 2026-06-17
+
+### Added
+
+- **GLM (Zhipu/Z.ai) reasoning_effort semantic mapping.** SGLang-served GLM-4.5/4.6/4.7/5.x chat templates only wire two effective reasoning levels — `High` (dials reasoning down) and `Max` (highest, the default) — via a `Reasoning Effort: <level>` system line, and any value other than `"high"` falls through to `Max`. Forwarding Anthropic effort tiers verbatim therefore inverts the intent (e.g. Anthropic `low` → GLM `Max`). The converter now detects GLM models by name and maps:
+  - Anthropic `low` / `medium` (want less reasoning) → GLM `"high"` (GLM's low band)
+  - Anthropic `high` / `xhigh` / `max` / unset (want more reasoning) → unset → GLM `Max`
+
+### Changed
+
+- DeepSeek V4 keeps its existing verbatim effort forwarding (defaulting to `"high"`); only GLM takes the two-band remap.
+
+### Fixed
+
+- Corrected the `--version` flag string, which had fallen behind at `0.6.5`.
+
+---
+
 ## [0.6.5] - 2026-05-06
 
 ### Added

@@ -86,6 +86,20 @@ def _is_deepseek_v4_model(model: Any) -> bool:
     return "deepseek-v4" in normalized or "deepseekai/deepseek-v4" in normalized
 
 
+def _is_glm_model(model: Any) -> bool:
+    """Return whether a resolved model name uses the GLM (Zhipu/Z.ai) chat template.
+
+    Covers GLM-4.5/4.6/4.7/5.x served under names like glm-5-2, GLM-5.2,
+    zai-org/GLM-5.2-FP8, etc. The sglang served-model-name is what reaches here
+    after model mapping, so a GLM model aliased as e.g. ``deepseek-v4-pro`` would
+    NOT match here (set the served-model-name to something containing "glm").
+    """
+    if not isinstance(model, str):
+        return False
+    normalized = model.lower()
+    return "glm" in normalized
+
+
 def _normalize_reasoning_effort(value: Any) -> str | None:
     """Normalize Anthropic output_config.effort values."""
     if not isinstance(value, str):
@@ -103,11 +117,45 @@ def _get_output_config_effort(output_config: Any) -> str | None:
     return _normalize_reasoning_effort(getattr(output_config, "effort", None))
 
 
+def _resolve_glm_reasoning_effort(effort: str | None) -> str | None:
+    """Map an Anthropic effort tier to the GLM reasoning_effort value.
+
+    The GLM chat template (GLM-4.5/4.6/4.7/5.x) wires only two effective
+    reasoning levels via a ``Reasoning Effort: <level>`` system line:
+
+      * ``"high"``  -> dials reasoning DOWN (the only value that lowers effort)
+      * any other value (or unset) -> ``Max``, the HIGHEST reasoning (the default)
+
+    So unlike Anthropic's ``low < medium < high < xhigh < max``, on GLM passing
+    ``"low"``/``"medium"`` does NOT reduce thinking — it falls through to ``Max``.
+    We therefore can only express two bands and must NOT pass through the raw
+    tier (that would invert the intent: Anthropic ``low`` -> GLM ``Max``).
+
+      * Anthropic low/medium (want LESS reasoning) -> GLM ``"high"`` (GLM's low)
+      * Anthropic high/xhigh/max (want MORE reasoning) -> unset (GLM ``Max``)
+      * unset -> unset (GLM ``Max``, the template default)
+    """
+    if effort in {"low", "medium"}:
+        return "high"
+    # high / xhigh / max / None -> let the template default to Max
+    return None
+
+
 def _resolve_reasoning_effort(
     model: Any, thinking: dict[str, Any], output_config: Any
 ) -> str | None:
-    """Resolve chat template reasoning effort from Anthropic effort tiers."""
+    """Resolve chat template reasoning effort from Anthropic effort tiers.
+
+    Model-specific dispatch:
+      * GLM models -> two-band semantic mapping (see ``_resolve_glm_reasoning_effort``)
+      * DeepSeek V4 -> forward the Anthropic tier verbatim, defaulting to ``"high"``
+      * anything else -> forward the Anthropic tier verbatim (no default)
+    """
     effort = _get_output_config_effort(output_config)
+
+    if _is_glm_model(model):
+        return _resolve_glm_reasoning_effort(effort)
+
     if effort:
         return effort
 
