@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.1] - 2026-06-21
+
+### Changed
+
+- **Self-describing placeholder for orphaned tool results.** When the converter backfills a `tool` message for an assistant `tool_calls` whose result the client never supplied, the placeholder content is now an explicit error message (`[ERROR: tool result for this call was not provided by the client; output is unknown. Do not fabricate; ask the user or re-issue the tool call if needed.]`) instead of the previous vague `[tool result unavailable]`. This lets the model see that the data is genuinely missing and recover by asking the user or re-issuing the call, instead of treating the placeholder as an empty tool output and fabricating an answer. (Follow-up to the 0.7.0 fix for issue #3.)
+
+---
+
 ## [0.7.0] - 2026-06-21
 
 ### Added
