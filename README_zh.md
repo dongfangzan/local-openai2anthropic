@@ -14,7 +14,8 @@
 
 - **双向协议转换** — Anthropic Messages API ↔ OpenAI Chat Completions API，让 Claude SDK / Claude Code 无缝对接 vLLM、SGLang 等任意 OpenAI 后端
 - **OpenAI 原生透传** — 同时提供 `POST /v1/chat/completions` 端点，请求原样转发，零转换损耗，保留所有上游字段
-- **服务端 Web Search** — 内置 Tavily / 通晓 搜索引擎，任何模型都能获得联网能力，无需客户端改造
+- **OpenAI Responses API 桥接** — `POST /v1/responses` 接收 Responses API 格式请求，转换为 `/v1/chat/completions` 发给只实现 chat completions 的后端，让 Responses SDK 客户端也能对接 vLLM/SGLang
+- **服务端 Web Search** — 内置 Tavily / 通晓 搜索引擎，任何模型都能获得联网能力，无需客户端改造（Anthropic 与 Responses 端点均支持）
 - **交错思考 (Interleaved Thinking)** — 完整支持 `thinking` 推理块，配合 `chat_template_kwargs` 和 `reasoning_effort`，DeepSeek V4 等推理模型开箱即用
 - **流式 & 工具调用 & 视觉** — SSE 实时流式、Claude tool_use 转换、多模态图像输入，覆盖核心 API 能力
 - **模型名映射** — 通配符规则将 Anthropic 模型名自动映射到后端模型，告别手动改配置
@@ -24,12 +25,13 @@
 
 ## 工作原理
 
-两种运行模式：
+三种运行模式：
 
 | 模式 | 端点 | 适用场景 |
 |------|----------|----------|
 | **Anthropic 代理** | `POST /v1/messages` | Claude SDK / Claude Code 应用对接任意 OpenAI 后端 |
 | **OpenAI 透传** | `POST /v1/chat/completions` | OpenAI 原生客户端直接透传，无转换开销 |
+| **Responses 桥接** | `POST /v1/responses` | OpenAI Responses SDK 客户端对接只支持 chat completions 的后端 |
 
 ![架构](./architecture_zh.png)
 
@@ -172,6 +174,36 @@ cors_headers = ["*"]
 | `POST` | `/v1/chat/completions` | OpenAI 格式对话补全（支持流式和非流式） |
 
 透传端点将请求原样转发到上游 —— 无校验、无转换、无模型名映射。所有字段（包括 `chat_template_kwargs`、`reasoning_effort` 等）均保持原样。
+
+### OpenAI Responses API 桥接
+
+| 方法 | 路径 | 说明 |
+|--------|------|-------------|
+| `POST` | `/v1/responses` | Responses API 格式请求，转换为上游 chat/completions |
+
+接收 Responses API 格式请求（`input`、`instructions`、`reasoning.effort`、`function` 类型 `tools`、`max_output_tokens` 等），转换为 `/v1/chat/completions` 调用上游后端，再将上游响应转回 Responses `Response` 对象。流式和非流式都支持 —— 流式输出完整的 Responses SSE 事件序列（`response.created` → `response.output_text.delta` → `response.completed`）。
+
+**服务端联网搜索**：请求携带 `web_search` / `web_search_preview` 工具且配置了搜索提供商（Tavily 或通晓）时，代理在本地运行搜索循环。`web_search` 工具以函数工具形式暴露给模型，模型调用时通过配置的提供商执行，结果回填供模型基于最新信息作答。Responses 输出中每个执行的搜索对应一个 `web_search_call` 条目。配置方式与 Anthropic 路径相同：
+
+```toml
+tavily_api_key = "tvly-xxx"
+# 或
+tongxiao_api_key = "xxx"
+websearch_provider = "tavily"       # "tavily"、"tongxiao" 或 "both"
+websearch_max_uses = 5
+```
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8080/v1", api_key="any")
+resp = client.responses.create(
+    model="your-model",
+    input="你好！",
+    instructions="回答简短",
+)
+print(resp.output_text)
+```
 
 ---
 

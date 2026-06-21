@@ -14,6 +14,7 @@ A lightweight proxy that bridges Anthropic and OpenAI ecosystems — run Claude 
 
 - **Bidirectional Protocol Conversion** — Anthropic Messages API ↔ OpenAI Chat Completions API. Run Claude SDK / Claude Code on any OpenAI-compatible backend (vLLM, SGLang, cloud APIs).
 - **OpenAI-Native Passthrough** — `POST /v1/chat/completions` forwards requests as-is with zero conversion overhead. All upstream fields preserved.
+- **OpenAI Responses API Bridge** — `POST /v1/responses` accepts the Responses API format and translates to `/v1/chat/completions` for backends that only implement chat completions. Lets Responses SDK clients talk to any vLLM/SGLang backend.
 - **Server-Side Web Search** — Built-in Tavily / TongXiao search. Give any model internet access without client-side changes.
 - **Interleaved Thinking** — Full support for `thinking` blocks with `chat_template_kwargs` and `reasoning_effort`. DeepSeek V4 and other reasoning models work out of the box.
 - **Streaming, Tools & Vision** — SSE real-time streaming, Claude `tool_use` conversion, multi-modal image input. Full API surface coverage.
@@ -24,12 +25,13 @@ A lightweight proxy that bridges Anthropic and OpenAI ecosystems — run Claude 
 
 ## What This Does
 
-Two modes of operation:
+Three modes of operation:
 
 | Mode | Endpoint | Use Case |
 |------|----------|----------|
 | **Anthropic Proxy** | `POST /v1/messages` | Claude SDK / Claude Code apps talking to any OpenAI backend |
 | **OpenAI Passthrough** | `POST /v1/chat/completions` | OpenAI-native clients bypassing conversion entirely |
+| **Responses Bridge** | `POST /v1/responses` | OpenAI Responses SDK clients talking to chat-completions-only backends |
 
 ![Architecture](./architecture.png)
 
@@ -172,6 +174,36 @@ cors_headers = ["*"]
 | `POST` | `/v1/chat/completions` | OpenAI-format chat completions (streaming & non-streaming) |
 
 The passthrough endpoint forwards requests directly to the upstream — no validation, no conversion, no model mapping. All fields (including `chat_template_kwargs`, `reasoning_effort`, etc.) are preserved as-is.
+
+### OpenAI Responses API Bridge
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/responses` | OpenAI Responses-format request, translated to chat/completions upstream |
+
+Accepts the Responses API request shape (`input`, `instructions`, `reasoning.effort`, `tools` of type `function`, `max_output_tokens`, …) and translates it to a `/v1/chat/completions` call against the upstream backend. The upstream chat completion is translated back into a Responses `Response` object. Both streaming and non-streaming modes are supported — streaming emits the full Responses SSE event sequence (`response.created` → `response.output_text.delta` → `response.completed`).
+
+**Server-side web search**: when the request includes a `web_search` / `web_search_preview` tool and a search provider is configured (Tavily or 通晓/TongXiao), the proxy runs the search loop locally. The `web_search` tool is exposed to the model as a function tool, executed via the configured provider when called, and the results are fed back so the model can answer with up-to-date information. The Responses output includes one `web_search_call` item per executed search. Configure search the same way as for the Anthropic path:
+
+```toml
+tavily_api_key = "tvly-xxx"
+# or
+tongxiao_api_key = "xxx"
+websearch_provider = "tavily"       # "tavily", "tongxiao", or "both"
+websearch_max_uses = 5
+```
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8080/v1", api_key="any")
+resp = client.responses.create(
+    model="your-model",
+    input="Hello!",
+    instructions="Be concise",
+)
+print(resp.output_text)
+```
 
 ---
 

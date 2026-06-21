@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.7.0] - 2026-06-21
+
+### Added
+
+- **OpenAI Responses API bridge** (`POST /v1/responses`): Accept OpenAI Responses-format requests (the `client.responses.create` surface) and translate them to `/v1/chat/completions` for upstream backends that only implement the chat-completions API (vLLM, SGLang, …). The upstream chat completion is then translated back into a Responses `Response` object.
+  - Non-streaming and streaming (SSE) both supported. Streaming emits the full Responses event sequence (`response.created`, `response.output_item.added`, `response.output_text.delta`, `response.output_item.done`, `response.completed`, …).
+  - Supported input shapes: plain string, list of `EasyInputMessage` items, `function_call` / `function_call_output` (tool history), `reasoning` items (carried forward as `reasoning_content`), and multipart content with `input_text` / `input_image`.
+  - `instructions` becomes a system message; `reasoning.effort` is forwarded as `chat_template_kwargs.reasoning_effort`; `tools` of type `function` are converted to chat-completions tools (other tool types are dropped).
+  - Model name mapping still applies.
+  - **Server-side web search on `/v1/responses`**: when a request carries a `web_search` / `web_search_preview` tool and a search provider (Tavily or 通晓/TongXiao) is configured, the proxy runs the search loop locally — the `web_search` tool is registered as an OpenAI function tool, executed via Tavily/TongXiao when the model calls it, and the results are fed back. The final Responses output includes one `web_search_call` item per executed search, followed by the model's answer. Both streaming and non-streaming supported.
+
+### Fixed
+
+- **Backfill placeholder tool results for orphaned tool calls.** vLLM/SGLang reject any assistant message carrying `tool_calls` when the subsequent `tool` messages do not answer every `tool_call_id` (history truncation, partial `tool_result` blocks, or a client sending only the call). The Anthropic converter and the Responses converter now insert a neutral placeholder `tool` message right after the assistant message for any `tool_call_id` lacking a matching tool result, so the upstream backend accepts the conversation instead of returning `400 invalid_request_error: An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'`. (GitHub issue #3.)
+
+---
+
 ## [0.6.7] - 2026-06-17
 
 ### Added

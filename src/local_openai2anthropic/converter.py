@@ -244,6 +244,14 @@ def convert_anthropic_to_openai(
         f"Converted {msg_count} messages, total OpenAI messages: {len(openai_messages)}"
     )
 
+    # Ensure every assistant tool_call is followed by a matching tool result.
+    # vLLM/SGLang reject any assistant message carrying tool_calls if a later
+    # tool message for each tool_call_id is missing (history truncation, partial
+    # tool_result blocks, or client sending only the call). Synthesize a neutral
+    # placeholder tool message for any orphaned tool_call_id so the upstream
+    # never sees an unfilled tool_calls message.
+    _ensure_tool_results_for_tool_calls(openai_messages)
+
     # Build OpenAI params
     params: dict[str, Any] = {
         "model": model,
@@ -529,6 +537,74 @@ def _convert_anthropic_message_to_openai(
 
     # Return messages and whether thinking block was present
     return messages, reasoning_content is not None
+
+
+_ORPHAN_TOOL_RESULT_PLACEHOLDER = "[tool result unavailable]"
+
+
+def _ensure_tool_results_for_tool_calls(
+    openai_messages: list[dict[str, Any]],
+) -> None:
+    """Backfill placeholder ``tool`` messages for any orphaned tool_call_id.
+
+    Mutates ``openai_messages`` in place. After this pass every assistant
+    ``tool_calls[i].id`` has a subsequent ``{role: "tool", tool_call_id: ...}``
+    message; if the client did not supply one, a neutral placeholder is inserted
+    right after the assistant message so the upstream backend (vLLM/SGLang)
+    accepts the conversation instead of returning a 400 about missing tool
+    messages.
+    """
+    if not openai_messages:
+        return
+
+    answered_ids: set[str] = set()
+    for msg in openai_messages:
+        if msg.get("role") == "tool":
+            tid = msg.get("tool_call_id")
+            if tid:
+                answered_ids.add(tid)
+
+    insertions: list[tuple[int, dict[str, Any]]] = []
+    for idx, msg in enumerate(openai_messages):
+        if msg.get("role") != "assistant":
+            continue
+        tool_calls = msg.get("tool_calls")
+        if not tool_calls:
+            continue
+        missing: list[str] = []
+        for tc in tool_calls:
+            tc_id = tc.get("id") if isinstance(tc, dict) else None
+            if tc_id and tc_id not in answered_ids:
+                missing.append(tc_id)
+        if not missing:
+            continue
+        # Insert placeholder tool messages right after this assistant message,
+        # in tool_calls order. We track the running insertion offset so multiple
+        # assistant messages in the same history insert at the correct index.
+        offset = 1
+        for tid in missing:
+            insertions.append(
+                (
+                    idx + offset,
+                    {
+                        "role": "tool",
+                        "tool_call_id": tid,
+                        "content": _ORPHAN_TOOL_RESULT_PLACEHOLDER,
+                    },
+                )
+            )
+            offset += 1
+            answered_ids.add(tid)
+
+    if not insertions:
+        return
+
+    for pos, tool_msg in sorted(insertions, key=lambda x: x[0], reverse=True):
+        openai_messages.insert(pos, tool_msg)
+    logger.debug(
+        "Backfilled %d placeholder tool result(s) for orphaned tool_call_id(s)",
+        len(insertions),
+    )
 
 
 def _build_usage_with_cache(

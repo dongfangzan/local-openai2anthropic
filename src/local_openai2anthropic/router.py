@@ -593,3 +593,264 @@ async def _openai_stream_proxy(
     except Exception as e:
         yield f"data: {json.dumps({'error': {'message': str(e), 'type': 'internal_error'}})}\n\n"
         yield "data: [DONE]\n\n"
+
+
+# ── OpenAI Responses API bridge ──────────────────────────────────────────────
+#
+# POST /v1/responses accepts OpenAI Responses-format requests and translates
+# them to /v1/chat/completions for upstream backends that only implement the
+# chat-completions surface (vLLM, SGLang, …). The upstream response is then
+# translated back to the Responses format.
+
+
+@openai_router.post("/responses", response_model=None)
+async def openai_responses(
+    request: Request,
+    settings: Settings = Depends(get_request_settings),
+):
+    """Accept a Responses-format request and proxy it as chat/completions."""
+    from local_openai2anthropic.responses_converter import (
+        convert_chat_completion_to_responses,
+        convert_responses_to_chat_completion,
+        stream_responses_from_chat_completion,
+    )
+
+    try:
+        body_bytes = await request.body()
+        body_json = json.loads(body_bytes.decode("utf-8"))
+        logger.debug(
+            f"[Responses Request] {json.dumps(body_json, ensure_ascii=False, indent=2)}"
+        )
+        api_logger.debug(
+            f"[Responses Request] {json.dumps(body_json, ensure_ascii=False)}"
+        )
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in responses request: {e}")
+        return JSONResponse(
+            status_code=400,
+            content={"error": {"message": f"Invalid JSON: {e}", "type": "invalid_request_error"}},
+        )
+    except Exception as e:
+        logger.error(f"Failed to parse responses request body: {e}")
+        return JSONResponse(
+            status_code=400,
+            content={"error": {"message": str(e), "type": "invalid_request_error"}},
+        )
+
+    if not isinstance(body_json, dict):
+        return JSONResponse(
+            status_code=400,
+            content={"error": {"message": "Request body must be a JSON object", "type": "invalid_request_error"}},
+        )
+
+    model_value = body_json.get("model")
+    if not isinstance(model_value, str) or not model_value.strip():
+        return JSONResponse(
+            status_code=400,
+            content={"error": {"message": "Model must be a non-empty string", "type": "invalid_request_error"}},
+        )
+
+    # Resolve model via configured mapping rules
+    original_model = body_json.get("model", "")
+    resolved_model = settings.resolve_model(original_model)
+    if resolved_model != original_model:
+        logger.debug("Model name mapped: %s -> %s", original_model, resolved_model)
+        body_json["model"] = resolved_model
+
+    instructions = body_json.get("instructions")
+    if isinstance(instructions, list):
+        # Reduce to a single string for forwarding/shell
+        instructions = "\n".join(
+            (p.get("text", "") if isinstance(p, dict) else str(p))
+            for p in instructions
+        ) or None
+
+    try:
+        chat_params = convert_responses_to_chat_completion(body_json)
+    except Exception as e:
+        logger.exception("Failed to convert Responses request to chat/completions")
+        return JSONResponse(
+            status_code=400,
+            content={"error": {"message": f"Conversion failed: {e}", "type": "invalid_request_error"}},
+        )
+
+    log_params = {k: v for k, v in chat_params.items() if not k.startswith("_")}
+    logger.debug(
+        f"[Responses->ChatCompletions Request] {json.dumps(log_params, ensure_ascii=False, indent=2)}"
+    )
+    api_logger.debug(
+        f"[Responses->ChatCompletions Request] {json.dumps(log_params, ensure_ascii=False)}"
+    )
+
+    url = f"{settings.openai_base_url.rstrip('/')}/chat/completions"
+    headers = {**settings.openai_auth_headers, "Content-Type": "application/json"}
+
+    stream = bool(body_json.get("stream", False))
+    model = chat_params.get("model", resolved_model)
+
+    # Server-side web search loop: when the request carries a web_search tool
+    # AND a search provider is configured, run the tool loop locally instead
+    # of forwarding the (unsupported) tool to the chat/completions backend.
+    web_search_configs = chat_params.pop("_web_search_configs", None)
+    if web_search_configs:
+        from local_openai2anthropic.responses_web_search import (
+            handle_responses_with_web_search,
+        )
+        from local_openai2anthropic.server_tools.web_search import (
+            WebSearchServerTool,
+        )
+
+        if WebSearchServerTool.is_enabled(settings):
+            result = await handle_responses_with_web_search(
+                chat_params,
+                web_search_configs,
+                url,
+                headers,
+                settings,
+                model,
+                instructions if isinstance(instructions, str) else None,
+                stream=stream,
+            )
+            if stream:
+                return StreamingResponse(result, media_type="text/event-stream")
+            return result
+        # Search not configured — fall through and treat web_search as a
+        # regular function tool would be treated (i.e. drop it, since the
+        # upstream backend doesn't implement it either). The conversion has
+        # already excluded web_search from chat_params["tools"].
+        logger.warning(
+            "Responses request carried a web_search tool but no search provider "
+            "is configured; proceeding without web search capability."
+        )
+
+    if stream:
+        client = httpx.AsyncClient(timeout=settings.request_timeout)
+        return StreamingResponse(
+            _stream_responses(client, url, headers, chat_params, model, instructions),
+            media_type="text/event-stream",
+        )
+
+    async with httpx.AsyncClient(timeout=settings.request_timeout) as client:
+        try:
+            response = await client.post(url, headers=headers, json=chat_params)
+
+            if response.status_code != 200:
+                raw_text = (response.text or "").strip()
+                if not raw_text:
+                    raw_text = response.reason_phrase or f"Upstream API error ({response.status_code})"
+                return JSONResponse(
+                    status_code=response.status_code,
+                    content={"error": {"message": raw_text, "type": "api_error"}},
+                )
+
+            if not response.content:
+                return JSONResponse(
+                    status_code=502,
+                    content={"error": {"message": "Upstream API returned empty response", "type": "api_error"}},
+                )
+
+            try:
+                openai_completion = response.json()
+            except json.JSONDecodeError as e:
+                return JSONResponse(
+                    status_code=502,
+                    content={"error": {"message": f"Failed to parse upstream response: {e}", "type": "api_error"}},
+                )
+
+            logger.debug(
+                f"[Responses->ChatCompletions Response] {json.dumps(openai_completion, ensure_ascii=False, indent=2)}"
+            )
+
+            from openai.types.chat import ChatCompletion
+
+            completion = ChatCompletion.model_validate(openai_completion)
+            responses_payload = convert_chat_completion_to_responses(
+                completion,
+                model=model,
+                instructions=instructions if isinstance(instructions, str) else None,
+            )
+
+            logger.debug(
+                f"[Responses Response] {json.dumps(responses_payload, ensure_ascii=False, indent=2)}"
+            )
+            api_logger.debug(
+                f"[Responses Response] {json.dumps(responses_payload, ensure_ascii=False)}"
+            )
+
+            return JSONResponse(content=responses_payload)
+
+        except httpx.TimeoutException:
+            return JSONResponse(
+                status_code=504,
+                content={"error": {"message": "Request timed out", "type": "timeout_error"}},
+            )
+        except httpx.RequestError as e:
+            return JSONResponse(
+                status_code=502,
+                content={"error": {"message": str(e), "type": "connection_error"}},
+            )
+
+
+async def _stream_responses(
+    client: httpx.AsyncClient,
+    url: str,
+    headers: dict,
+    chat_params: dict,
+    model: str,
+    instructions: str | None,
+) -> AsyncGenerator[str, None]:
+    """Stream chat/completions upstream and emit Responses-format SSE events."""
+    from local_openai2anthropic.responses_converter import (
+        stream_responses_from_chat_completion,
+    )
+
+    try:
+        async with client.stream(
+            "POST", url, headers=headers, json=chat_params
+        ) as response:
+            if response.status_code != 200:
+                error_body = await response.aread()
+                error_text = error_body.decode("utf-8", errors="replace").strip()
+                err_payload = {
+                    "type": "response.failed",
+                    "response": {
+                        "id": "",
+                        "object": "response",
+                        "created_at": 0,
+                        "model": model,
+                        "status": "failed",
+                        "output": [],
+                        "error": {"code": "upstream_error", "message": error_text or f"Upstream error ({response.status_code})"},
+                    },
+                }
+                yield f"event: response.failed\ndata: {json.dumps(err_payload, ensure_ascii=False)}\n\n"
+                return
+
+            async def _line_iter():
+                async for line in response.aiter_lines():
+                    yield line
+
+            async for sse_chunk in stream_responses_from_chat_completion(
+                _line_iter(),
+                model=model,
+                instructions=instructions if isinstance(instructions, str) else None,
+            ):
+                yield sse_chunk
+
+    except Exception as e:
+        import traceback
+
+        logger.error(f"Responses stream error: {e}\n{traceback.format_exc()}")
+        err_payload = {
+            "type": "response.failed",
+            "response": {
+                "id": "",
+                "object": "response",
+                "created_at": 0,
+                "model": model,
+                "status": "failed",
+                "output": [],
+                "error": {"code": "internal_error", "message": str(e)},
+            },
+        }
+        yield f"event: response.failed\ndata: {json.dumps(err_payload, ensure_ascii=False)}\n\n"

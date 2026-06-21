@@ -270,6 +270,86 @@ class TestConvertAnthropicMessageEdgeCases:
         assert result[0]["role"] == "assistant"
         assert "tool_calls" in result[0]
 
+    def test_orphan_tool_call_gets_placeholder_result(self):
+        """Assistant tool_use with no following tool_result must be backfilled.
+
+        Regression for GitHub issue #3: vLLM/SGLang reject an assistant
+        tool_calls message when no matching tool message follows.
+        """
+        params: MessageCreateParams = {
+            "model": "m",
+            "max_tokens": 1024,
+            "messages": [
+                {"role": "user", "content": "weather?"},
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "call_a",
+                            "name": "get_weather",
+                            "input": {"city": "Tokyo"},
+                        }
+                    ],
+                },
+                {"role": "user", "content": "thanks"},
+            ],
+        }
+        result = convert_anthropic_to_openai(params)
+        msgs = result["messages"]
+        for i, m in enumerate(msgs):
+            if m.get("role") == "assistant" and m.get("tool_calls"):
+                assert i + 1 < len(msgs), "missing placeholder tool message"
+                nxt = msgs[i + 1]
+                assert nxt["role"] == "tool"
+                assert nxt["tool_call_id"] == "call_a"
+                assert nxt["content"]
+                return
+        pytest.fail("no assistant tool_calls message found")
+
+    def test_partial_orphan_tool_calls_get_placeholders(self):
+        """When only some tool_call_ids are answered, backfill the rest."""
+        params: MessageCreateParams = {
+            "model": "m",
+            "max_tokens": 1024,
+            "messages": [
+                {"role": "user", "content": "weather and time?"},
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "call_a",
+                            "name": "get_weather",
+                            "input": {"city": "Tokyo"},
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "call_b",
+                            "name": "get_time",
+                            "input": {"tz": "JST"},
+                        },
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "call_a",
+                            "content": "sunny",
+                        }
+                    ],
+                },
+                {"role": "user", "content": "and the time?"},
+            ],
+        }
+        result = convert_anthropic_to_openai(params)
+        msgs = result["messages"]
+        tool_ids = [m["tool_call_id"] for m in msgs if m.get("role") == "tool"]
+        assert "call_a" in tool_ids
+        assert "call_b" in tool_ids
+
 
 class TestConvertOpenAIToAnthropicEdgeCases:
     """Tests for convert_openai_to_anthropic edge cases."""
