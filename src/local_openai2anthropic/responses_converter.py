@@ -318,7 +318,11 @@ def _input_item_to_openai_messages(
     return []
 
 
-_ORPHAN_TOOL_RESULT_PLACEHOLDER = "[tool result unavailable]"
+_ORPHAN_TOOL_RESULT_PLACEHOLDER = (
+    "[ERROR: tool result for this call was not provided by the client; "
+    "output is unknown. Do not fabricate; ask the user or re-issue the "
+    "tool call if needed.]"
+)
 
 
 def _ensure_tool_results_for_tool_calls(
