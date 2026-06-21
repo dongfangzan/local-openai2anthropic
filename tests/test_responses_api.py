@@ -425,6 +425,33 @@ class TestChatToResponsesConversion:
         assert out["usage"]["output_tokens"] == 2
         assert out["usage"]["total_tokens"] == 7
 
+    def test_created_at_is_integer_seconds(self):
+        """created_at must be an int, not a float.
+
+        Some downstream consumers (new-api's Go struct) decode created_at into
+        int and reject fractional values. Regression for the v0.7.2 fix.
+        """
+        from openai.types.chat import ChatCompletion, ChatCompletionMessage
+        from openai.types.chat.chat_completion import Choice
+
+        cc = ChatCompletion(
+            id="cmpl-1",
+            object="chat.completion",
+            created=1700000000,
+            model="gpt-4o",
+            choices=[
+                Choice(
+                    index=0,
+                    message=ChatCompletionMessage(role="assistant", content="hi"),
+                    finish_reason="stop",
+                )
+            ],
+            usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        )
+        out = convert_chat_completion_to_responses(cc, model="gpt-4o")
+        assert isinstance(out["created_at"], int)
+        assert out["created_at"] == int(out["created_at"])
+
     def test_reasoning_item(self):
         from openai.types.chat import ChatCompletion, ChatCompletionMessage
         from openai.types.chat.chat_completion import Choice

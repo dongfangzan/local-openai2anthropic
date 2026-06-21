@@ -3,7 +3,7 @@
 local-openai2anthropic: A proxy server that converts Anthropic Messages API to OpenAI API.
 """
 
-__version__ = "0.7.1"
+__version__ = "0.7.2"
 
 from local_openai2anthropic.protocol import (
     AnthropicError,

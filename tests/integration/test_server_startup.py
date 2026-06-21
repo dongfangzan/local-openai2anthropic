@@ -103,7 +103,7 @@ class TestServerConfiguration:
 
     async def test_app_version(self, app: FastAPI) -> None:
         """Test app version is set correctly."""
-        assert app.version == "0.7.1"
+        assert app.version == "0.7.2"
 
     async def test_app_title(self, app: FastAPI) -> None:
         """Test app title is set correctly."""

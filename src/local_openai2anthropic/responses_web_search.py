@@ -341,7 +341,7 @@ async def _stream_responses_with_web_search(
     from local_openai2anthropic.responses_converter import _sse
 
     rid = responses_payload.get("id", "")
-    created_at = responses_payload.get("created_at", float(time.time()))
+    created_at = responses_payload.get("created_at", int(time.time()))
     status = responses_payload.get("status", "completed")
 
     # response.created / in_progress

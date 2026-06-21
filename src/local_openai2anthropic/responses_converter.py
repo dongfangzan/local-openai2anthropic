@@ -523,8 +523,15 @@ def convert_responses_to_chat_completion(
     return chat_params
 
 
-def _now() -> float:
-    return float(time.time())
+def _now() -> int:
+    """Integer Unix seconds.
+
+    OpenAI's Responses API documents ``created_at`` as an integer (Unix
+    seconds). Some downstream consumers (e.g. new-api's Go struct) decode it
+    into ``int`` and reject fractional values, so we truncate rather than
+    preserving sub-second precision.
+    """
+    return int(time.time())
 
 
 def _gen_response_id() -> str:
@@ -570,7 +577,7 @@ def convert_chat_completion_to_responses(
     *,
     model: str,
     instructions: str | None = None,
-    created_at: float | None = None,
+    created_at: int | None = None,
     response_id: str | None = None,
 ) -> dict[str, Any]:
     """Convert a Chat Completions response to a Responses ``Response`` dict."""
@@ -981,7 +988,7 @@ async def stream_responses_from_chat_completion(
 def _build_response_shell(
     rid: str,
     model: str,
-    created_at: float,
+    created_at: int,
     instructions: str | None,
     *,
     status: str = "completed",

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.2] - 2026-06-22
+
+### Fixed
+
+- **`created_at` now emitted as integer Unix seconds.** The Responses API documents `created_at` as an integer, but the converter was emitting a `float` (e.g. `1782085884.1576056`). Consumers that decode the field into a strict integer type — notably new-api's Go struct `OpenAIResponsesResponse.created_at` — rejected the payload with `json: cannot unmarshal number … into Go struct field … of type int`, causing channel-test failures for `glm-5.2` and `deepseek-v4-pro` on the OpenAI Responses (`/v1/responses`) endpoint. Both the non-streaming and streaming Responses paths now emit `int(time.time())`. Affects `/v1/responses` only; `/v1/messages` and `/v1/chat/completions` were already integer-correct.
+
+---
+
 ## [0.7.1] - 2026-06-21
 
 ### Changed
