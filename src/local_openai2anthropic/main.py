@@ -120,7 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="local-openai2anthropic",
         description="A proxy server that converts Anthropic Messages API to OpenAI API",
-        version="0.7.2",
+        version="0.7.3",
         docs_url="/docs",
         redoc_url="/redoc",
     )
@@ -163,8 +163,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if request.url.path in ["/docs", "/redoc", "/openapi.json", "/health"]:
                 return await call_next(request)
 
+            # Accept either "Authorization: Bearer <key>" (OpenAI style)
+            # or "x-api-key: <key>" (Anthropic official style) so that
+            # Anthropic-format clients like new-api can authenticate.
             auth_header = request.headers.get("Authorization", "")
-            if not auth_header.startswith("Bearer "):
+            x_api_key = request.headers.get("x-api-key", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:]  # Remove "Bearer " prefix
+            elif x_api_key:
+                token = x_api_key
+            else:
                 error_response = AnthropicErrorResponse(
                     error=AnthropicError(
                         type="authentication_error",
@@ -176,7 +184,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     content=error_response.model_dump(),
                 )
 
-            token = auth_header[7:]  # Remove "Bearer " prefix
             if token != settings.api_key:
                 error_response = AnthropicErrorResponse(
                     error=AnthropicError(
@@ -290,7 +297,7 @@ Examples:
     parser.add_argument(
         "--version",
         action="version",
-        version="%(prog)s 0.7.2",
+        version="%(prog)s 0.7.3",
     )
 
     # Create subparsers for commands

@@ -23,7 +23,7 @@ class TestCreateApp:
         app = create_app(settings)
 
         assert app.title == "local-openai2anthropic"
-        assert app.version == "0.7.2"
+        assert app.version == "0.7.3"
         assert app.docs_url == "/docs"
         assert app.redoc_url == "/redoc"
 
@@ -68,6 +68,32 @@ class TestCreateApp:
         )
         # Should pass auth but fail validation
         assert response.status_code == 400
+
+    def test_create_app_auth_accepts_x_api_key(self):
+        """Test that auth middleware accepts Anthropic-style x-api-key header."""
+        settings = Settings(
+            openai_api_key="test-key",
+            api_key="server-api-key",
+        )
+
+        app = create_app(settings)
+        client = TestClient(app)
+
+        # x-api-key with correct key should pass auth (but fail validation)
+        response = client.post(
+            "/v1/messages",
+            json={},
+            headers={"x-api-key": "server-api-key"},
+        )
+        assert response.status_code == 400
+
+        # x-api-key with wrong key should fail with 401
+        response = client.post(
+            "/v1/messages",
+            json={},
+            headers={"x-api-key": "wrong-key"},
+        )
+        assert response.status_code == 401
 
     def test_create_app_auth_skips_docs(self):
         """Test that auth middleware skips docs endpoints."""

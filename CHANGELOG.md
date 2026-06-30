@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.3] - 2026-06-30
+
+### Fixed
+
+- **Auth middleware now accepts the `x-api-key` header.** The server's optional API-key authentication previously only honored `Authorization: Bearer <key>`. Anthropic-format clients — notably new-api's Claude channel, which follows the official Anthropic convention and sends `x-api-key` (with no `Authorization` header) — were rejected with `401 authentication_error`, making the channel unusable when `api_key` was configured. The middleware now accepts either `Authorization: Bearer <key>` (OpenAI style) or `x-api-key: <key>` (Anthropic style); the two are interchangeable. `Authorization: Bearer` behavior is unchanged.
+
+---
+
 ## [0.7.2] - 2026-06-22
 
 ### Fixed
